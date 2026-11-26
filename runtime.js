@@ -352,11 +352,20 @@ function createRuntime(project, canvas, hooks={}) {
  const keyDown=k=>keys.has(norm(k));
  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
  const functions={tileHasTag, tileColumn, tileRow, min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
- // Small expression compiler: no eval, no access to browser globals or prototypes.
- const cache=new Map();
- function compile(src){src=String(src??'0');if(cache.has(src))return cache.get(src);let tok=[],r=/\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:([eE][+-]?\d+))?|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*)|(===|!==|==|!=|<=|>=|&&|\|\||[+\-*/%<>()!.,]))/gy,pos=0;while(pos<src.length){if(!src.slice(pos).trim())break;r.lastIndex=pos;let m=r.exec(src);if(!m)throw Error('Invalid expression near '+src.slice(pos));pos=r.lastIndex;tok.push(m[1]?['n',Number(m[1]+(m[2]||''))]:m[3]?['s',m[3].slice(1,-1).replace(/\\([nrt'"\\])/g,(_,c)=>({n:'\n',r:'\r',t:'\t'}[c]||c))]:m[4]?['id',m[4]]:['op',m[5]])}let i=0;const peek=()=>tok[i]?.[1],take=()=>tok[i++],expect=x=>{if(peek()!==x)throw Error('Expected '+x+' in '+src);i++};const prec={'||':1,'&&':2,'==':3,'===':3,'!=':3,'!==':3,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,'%':6};
- function atom(){let t=take();if(!t)throw Error('Incomplete expression: '+src);let [kind,v]=t;if(v==='('&&kind==='op'){let f=parse(0);expect(')');return f}if(kind==='op'&&['!','-','+'].includes(v)){let f=atom();return c=>v==='!'?!f(c):v==='-'?-f(c):+f(c)}if(kind==='n'||kind==='s')return ()=>v;if(kind!=='id')throw Error('Unexpected '+v);if(peek()==='('){i++;let args=[];if(peek()!==')'){do{args.push(parse(0));if(peek()!==',')break;i++}while(true)}expect(')');if(!Object.hasOwn(functions,v))throw Error('Unknown function '+v);return c=>functions[v](...args.map(f=>f(c)))}let path=[v];while(peek()==='.'){i++;let q=take();if(q?.[0]!=='id')throw Error('Expected property');path.push(q[1])}return c=>resolve(path,c)}
- function parse(min){let a=atom();while(prec[peek()]>=min&&prec[peek()]!==undefined){let op=take()[1],b=parse(prec[op]+1),prev=a;a=c=>{let x=prev(c);if(op==='&&')return x&&b(c);if(op==='||')return x||b(c);let y=b(c);switch(op){case '+':return x+y;case '-':return x-y;case '*':return x*y;case '/':return x/y;case '%':return x%y;case '==':case '===':return x===y;case '!=':case '!==':return x!==y;case '<':return x<y;case '>':return x>y;case '<=':return x<=y;case '>=':return x>=y}}}return a}let f=parse(0);if(i!==tok.length)throw Error('Unexpected token in '+src);cache.set(src,f);return f}
+ const expressionEnvironment = { read: resolve, functions };
+ const expressionCache = new Map();
+ function interpretExpression(text, context) {
+  if (!expressionCache.has(text)) expressionCache.set(text, bindEventExpression(parseEventExpression(text), expressionEnvironment));
+  return expressionCache.get(text)(context);
+ }
+
+ const rowPlans = new WeakMap();
+ const proposedProgram = hooks.compiledEvents;
+ const compiledRows = proposedProgram ? [...projectEventRows(p)] : [];
+ const program = proposedProgram && proposedProgram.shape.length === compiledRows.length &&
+  compiledRows.every((row,index) => proposedProgram.shape[index] === eventRowShape(row)) ? proposedProgram : null;
+ if (program) compiledRows.forEach(({event},index) => rowPlans.set(event, program.rows[index]));
+ const execution = program ? 'Compiled' : 'Interpreted';
  const callStack = [];
  const layoutSource = level => ({ kind: 'layout', id: level.id, name: level.name });
  const functionDefs = new Map(p.layouts.flatMap(level => level.events.filter(event => event.functionName)
@@ -377,7 +386,12 @@ function createRuntime(project, canvas, hooks={}) {
   return overlap(a, b) && !previousPairs.has(key);
  }
 
- function expr(s,scope,target,index=0,owner){return compile(s)({scope,target,index,owner})}
+ function expr(value, scope, target, index = 0, owner) {
+  const text = String(value ?? '0');
+  const context = { scope, target, index, owner };
+  const compiled = program?.expressions.get(text);
+  return compiled ? compiled(expressionEnvironment, context) : interpretExpression(text, context);
+ }
  function tileHasTag(layerName, x, y, tag) {
   const tile = tileAtWorld(layout.tilemap, layerName, x, y);
   if (!tile || !tag) return false;
@@ -411,7 +425,7 @@ function createRuntime(project, canvas, hooks={}) {
   return Boolean(state?.eventFrame === frame && state.status === (kind === 'navArrived' ? 'arrived' : 'failed'));
  }
  function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||state.clip.name===a.clip))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function* action(a,s,index,owner,depth,parents){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function* action(a,s,index,owner,depth,parents,breakpoint){if(breakpoint)yield breakpoint;let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
  function executionPoint(event, source, scope, owner, depth, parents, conditions, index, actionIndex, breakpoint = false) {
   const target = event.actions[actionIndex ?? 0]?.args?.object;
   const selected = new Set(Object.values(scope).flat().filter(object => !object.dead).map(object => object.id));
@@ -421,6 +435,16 @@ function createRuntime(project, canvas, hooks={}) {
    source, id: event.id, depth, parents, conditions: conditions ? [...conditions] : [], index, actionIndex, breakpoint,
    selected: [...selected], calls: callStack.map(entry => entry.name), callDepth: callStack.length, frame,
   };
+ }
+
+ function mergeSelections(matches) {
+  const seen = new Set();
+  return matches.filter(scope => {
+   const key = JSON.stringify(Object.keys(scope).sort().map(id => [id, scope[id].map(object => object.id).sort()]));
+   if (seen.has(key)) return false;
+   seen.add(key);
+   return true;
+  });
  }
 
  function* executeEvent(event, scope, index, owner, source, depth, parents) {
@@ -434,17 +458,14 @@ function createRuntime(project, canvas, hooks={}) {
     if (conditions && (!conditions[blockIndex] || matches.length)) conditions[blockIndex] = matches.length > 0;
     return matches;
    };
-   let scopes = [scope];
-   if (event.mode === 'or' && event.conditions.length) {
-    const matches = event.conditions.flatMap((block, blockIndex) => evaluateCondition(block, blockIndex, scope));
-    const seen = new Set();
-    scopes = matches.filter(scope => {
-     const key = JSON.stringify(Object.keys(scope).sort().map(id => [id, scope[id].map(object => object.id).sort()]));
-     if (seen.has(key)) return false;
-     seen.add(key);
-     return true;
-    });
+   const plan = rowPlans.get(event);
+   let scopes;
+   if (plan) {
+    scopes = plan.select(scope, (blockIndex, items) => evaluateCondition(event.conditions[blockIndex], blockIndex, items), mergeSelections);
+   } else if (event.mode === 'or' && event.conditions.length) {
+    scopes = mergeSelections(event.conditions.flatMap((block, blockIndex) => evaluateCondition(block, blockIndex, scope)));
    } else {
+    scopes = [scope];
     for (const [blockIndex, block] of event.conditions.entries()) {
      scopes = scopes.flatMap(scope => evaluateCondition(block, blockIndex, scope));
      if (!scopes.length) break;
@@ -459,9 +480,16 @@ function createRuntime(project, canvas, hooks={}) {
       if (tracing) debugHooks.trace?.(point);
       if (breakpoint) yield point;
      }
+     if (plan) {
+      yield* plan.execute(actionIndex => action(event.actions[actionIndex], selectedScope, j, owner, depth, trail,
+       stepRule ? executionPoint(event, source, selectedScope, owner, depth, parents, conditions, j, actionIndex) : null), childIndex => executeEvent(event.children[childIndex], selectedScope, j, owner, source, depth + 1, trail),
+      () => callStack.at(-1)?.returned);
+      if (callStack.at(-1)?.returned) return;
+      continue;
+     }
      for (const [actionIndex, block] of event.actions.entries()) {
-      if (stepRule) yield executionPoint(event, source, selectedScope, owner, depth, parents, conditions, j, actionIndex);
-      yield* action(block, selectedScope, j, owner, depth, trail);
+      const breakpoint = stepRule ? executionPoint(event, source, selectedScope, owner, depth, parents, conditions, j, actionIndex) : null;
+      yield* action(block, selectedScope, j, owner, depth, trail, breakpoint);
       if (callStack.at(-1)?.returned) return;
      }
      for (const child of event.children || []) {
@@ -659,7 +687,7 @@ function createRuntime(project, canvas, hooks={}) {
   draw();
   if (profile) { profile.rendering = clock() - phaseStarted; profile.total = clock() - started; }
   hooks.tick?.({
-   ms: clock() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine,
+   ms: clock() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine, execution,
    vars: { ...vars }, count: objects.length, particles: particles.items.length, layout: layout.name, frame, time, profile,
    objects: objects.map(object => ({ ...object, vars: { ...object.vars } })),
   });
@@ -752,6 +780,6 @@ function createRuntime(project, canvas, hooks={}) {
    if (running) hooks.renderer?.('Canvas 2D · ' + error.message);
   }
  }
- reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause,step,reset,debugCommand,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
+ reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause,step,reset,debugCommand,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame,execution}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
 }
 function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}

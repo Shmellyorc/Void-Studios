@@ -254,6 +254,11 @@ function setupPreviewDebugger() {
   $('#debug-follow').checked = false;
   renderPreviewDebug(true);
  };
+ $('#debug-show-code').onclick = () => {
+  const source = debugSources().find(item => sourceKey(item) === editorDebug.sourceKey);
+  const point = editorDebug.inspectedPoint ?? editorDebug.point;
+  if (source) showGeneratedJavaScript(source, point && sourceKey(point.source) === sourceKey(source) ? point.id : undefined, editorDebug.project);
+ };
  $('#debug-object').onchange = event => { editorDebug.selected = event.target.value; renderPreviewDebug(true); };
  $('#debug-tracing').onchange = event => { editorDebug.traceEnabled = event.target.checked; renderPreviewDebug(true); };
  $('#debug-follow').onchange = event => { editorDebug.follow = event.target.checked; editorDebug.inspectedPoint = null; renderPreviewDebug(true); };

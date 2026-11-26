@@ -114,6 +114,19 @@ and rendering. It shows inclusive timings by event sheet and timings by
 built-in behavior. Time spent at a breakpoint is excluded. Exported games run
 with the editor debugger inactive.
 
+## Compiled and interpreted events
+
+The **Events** picker sets the execution mode for preview and HTML export.
+Compiled mode generates JavaScript for each visual row and its expressions.
+Offline exports include that generated code and use the same picking, collision,
+timer, behavior, and visual function semantics as the interpreter.
+
+Open **JavaScript** from an event sheet or click **JS** on a row. The viewer
+shows the generated lines and expression functions for that sheet, with
+diagnostics attached to their visual row. Download the full generated program
+from the same window. During a breakpoint, the inspector’s **JavaScript**
+button opens the code for the paused row. Step and breakpoints work in both modes.
+
 ## Package a desktop app
 
 Run these commands on Windows, macOS, or Linux to build for that host.

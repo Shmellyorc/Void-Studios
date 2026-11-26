@@ -32,3 +32,10 @@
 .profile-phase{display:grid;grid-template-columns:1fr auto;gap:4px;margin-bottom:8px;font-size:11px}
 .profile-bar{grid-column:1 / -1;height:4px;background:#314151;border-radius:3px}.profile-bar span{display:block;height:100%;background:#75cab2;border-radius:inherit}
 @media(max-width:900px){.debugger-open .preview-grid{grid-template-columns:1fr;min-height:0;overflow:auto}.debugger-open #gamecanvas{max-height:34vh}#preview-inspector{border-left:0;border-top:1px solid var(--line);min-height:250px}}
+#dialog.compiler-dialog{width:min(930px,94vw);max-width:94vw}
+.compiler-options{display:flex;gap:10px;align-items:end}.compiler-options label{flex:1;margin:0}.compiler-options button{margin-bottom:1px}
+.compiler-code{background:#121c26;border:1px solid var(--line);padding:6px 0;max-height:49vh;overflow:auto;tab-size:2;color:#d0e2f0;font:12px/1.65 monospace}
+.compiler-line{display:block;min-width:max-content;white-space:pre;padding-right:10px}.compiler-line.current{background:#1f3736}
+.compiler-line .line-number{display:inline-block;width:50px;text-align:right;color:#8299a9;padding-right:10px;user-select:none}
+.compiler-heading{display:block;margin:7px 0 4px;padding:5px 10px;color:#91dabd;border-bottom:1px solid var(--line)}
+.compiler-diagnostics{padding-left:22px;color:#ffc2a2;font-size:12px}.event .event-js-button{font-size:10px;padding:2px 4px}

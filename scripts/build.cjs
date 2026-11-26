@@ -18,10 +18,12 @@ const html = source('shell.html')
   .replace('/*TILEMAP*/', () => source('tilemap.js'))
   .replace('/*NAVIGATION*/', () => source('navigation.js'))
   .replace('/*ANIMATION*/', () => source('animation.js'))
+  .replace('/*EVENT_EXPRESSIONS*/', () => source('event-expressions.js'))
   .replace('/*RUNTIME*/', () => source('runtime.js'))
   .replace('/*TILE_EDITOR*/', () => source('tile-editor.js'))
   .replace('/*ANIMATOR_EDITOR*/', () => source('animator-editor.js'))
   .replace('/*STUDIO_DEBUGGER*/', () => source('studio-debugger.js'))
+  .replace('/*EVENT_COMPILER*/', () => source('event-compiler.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });
