@@ -11,13 +11,13 @@ const uiAnchors = {
  'center-left':[0,.5], center:[.5,.5], 'center-right':[1,.5],
  'bottom-left':[0,1], 'bottom-center':[.5,1], 'bottom-right':[1,1],
 };
-const uiCommands = ['event','layout','restart','show','restore'];
+const uiCommands = ['event','layout','restart','show','restore','continue'];
 const uiSettingsKinds = ['slider','toggle','dropdown'];
 const uiFonts = { system:'system-ui, sans-serif', serif:'Georgia, serif', mono:'monospace' };
 const uiControlFonts = new WeakMap(), uiBitmapCaptions = new WeakMap();
 const uiStyleColors = ['color','background','hover','pressed','focus','disabled'];
 const isUISetting = item => uiSettingsKinds.includes(item.kind);
-const isUIInteractive = item => item.kind === 'button' || isUISetting(item);
+const isUIInteractive = item => item.kind === 'button' || item.kind === 'data-list' || isUISetting(item);
 
 function gameKeyName(key) {
  const name = String(key).toLowerCase();
@@ -60,15 +60,18 @@ function validateGameUI(project) {
       (screen.navigation !== undefined && typeof screen.navigation !== 'boolean')) throw Error('Invalid UI screen');
   screenIds.add(screen.id);
   for (const item of screen.items) {
-   if (!idOK(item?.id) || itemIds.has(item.id) || !['button','label','bar','panel','image',...uiSettingsKinds].includes(item.kind) ||
+   if (!idOK(item?.id) || itemIds.has(item.id) || !['button','label','bar','panel','image','data-list',...uiSettingsKinds].includes(item.kind) ||
     !Object.hasOwn(uiAnchors,item.anchor) || ![item.x,item.y,item.w,item.h,item.size].every(Number.isFinite) ||
     Math.min(item.w,item.h,item.size) <= 0 || typeof item.text !== 'string' ||
     !colorOK(item.color) || !colorOK(item.background) ||
     (item.style != null && item.style !== '' && !styleIds.has(item.style)) ||
-    (item.kind === 'button' && (!Number.isFinite(item.order) || !uiCommands.includes(item.command) || typeof item.target !== 'string')) ||
+    (item.kind === 'button' && (!Number.isFinite(item.order) || !uiCommands.includes(item.command) || typeof item.target !== 'string' ||
+     (item.command === 'continue' && !validCheckpointSlot(item.target)))) ||
     (item.kind === 'panel' && (!uiPanelModes.includes(item.layout) ||
      !['start','center','end','stretch'].includes(item.align) ||
      ![item.padding,item.gap].every(value => Number.isFinite(value) && value >= 0))) ||
+    (item.kind === 'data-list' && (!Number.isFinite(item.order) || !dataListModes.some(([mode]) => mode === item.mode) ||
+     ['variable','table','labelColumn','iconColumn','fromColumn','nextColumn','selectionVariable','emptyText'].some(key => typeof item[key] !== 'string'))) ||
     (isUISetting(item) && (!Number.isFinite(item.order) || typeof item.variable !== 'string')) ||
     (item.kind === 'slider' && (![item.min,item.max,item.step].every(Number.isFinite) || item.min >= item.max || item.step <= 0)) ||
     (item.kind === 'dropdown' && (!Array.isArray(item.options) || !item.options.length ||
@@ -150,7 +153,8 @@ function paintStudioUICaption(node,text,format) {
 }
 
 function updateUIControl(node, item, vars, values, data) {
- const field = studioDataBoundValue(data,item.dataField,vars[item.dataRowVariable]);
+ if (item.kind === 'data-list') return paintUIDataList(node,item,vars,data);
+ const field = studioDataBoundValue(data,item.dataField,vars[item.dataRowVariable],item.emptyWithoutRow);
  if (item.kind === 'image') {
   const sprite = data?.enumIcons.get(field) ?? field ?? '';
   if (node.dataset.dataSprite !== sprite) {
@@ -196,6 +200,7 @@ function createUIControl(item, vars, style, values, data) {
  const node = document.createElement(item.kind === 'button' ? 'button' : 'div');
  node.className = 'void-ui-control void-ui-' + item.kind;
  node.dataset.uiControl = item.id;
+ if (item.kind === 'label' && item.textAlign) node.dataset.textAlign = item.textAlign;
  node.style.fontSize = 'calc(' + (style?.size ?? item.size) + ' * var(--void-ui-unit))';
  node.style.color = style?.color ?? item.color;
  node.style.setProperty('--void-ui-color',item.transparent ? 'transparent' : style?.background ?? item.background);
@@ -214,6 +219,10 @@ function createUIControl(item, vars, style, values, data) {
   node.setAttribute('role','img');
   node.setAttribute('aria-label',item.text);
  }
+ if (item.kind === 'data-list') {
+  node.setAttribute('role','group');
+  node.setAttribute('aria-label',item.text || 'Data list');
+ }
  if (isUISetting(item)) {
   node.classList.add('void-ui-setting');
   const label = document.createElement('span');
@@ -227,7 +236,7 @@ function createUIControl(item, vars, style, values, data) {
   node.append(label,control);
   if (item.kind === 'slider') node.append(document.createElement('span'));
  }
- if (isUIInteractive(item)) {
+ if (item.kind === 'button' || isUISetting(item)) {
   const control = item.kind === 'button' ? node : node.children[1];
   control.disabled = Boolean(item.disabled);
   node.classList.toggle('void-ui-disabled',Boolean(item.disabled));
@@ -236,11 +245,11 @@ function createUIControl(item, vars, style, values, data) {
  return node;
 }
 
-function createGameOverlay(layer, canvas, activate, styles = [], data) {
+function createGameOverlay(layer, canvas, activate, styles = [], data, canActivate = () => true) {
  if (!layer) return null;
  const styleMap = new Map(styles.map(style => [style.id,style]));
  const values = new Map();
- let controls = [], interactive = [], selected = 0;
+ let controls = [], interactive = [], selected = 0, navigationEnabled = true;
  function resize() {
   if (!canvas.width || !canvas.height) return;
   const width = canvas.clientWidth, height = canvas.clientHeight;
@@ -257,8 +266,41 @@ function createGameOverlay(layer, canvas, activate, styles = [], data) {
   interactive[selected]?.node.classList.remove('void-ui-focused');
   selected = (index + interactive.length) % interactive.length;
   interactive[selected].node.classList.add('void-ui-focused');
-  if (moveFocus) interactive[selected].control.focus({ preventScroll: true });
+  if (moveFocus) {
+   const {control,item} = interactive[selected];
+   control.focus({ preventScroll: true });
+   if (item.kind === 'data-list') control.scrollIntoView({ block:'nearest',inline:'nearest' });
+  }
  }
+ function rebuildNavigation(moveFocus) {
+  const previous = interactive[selected];
+  previous?.node.classList.remove('void-ui-focused');
+  interactive = controls.filter(({item}) => isUIInteractive(item) && !item.disabled)
+   .flatMap(entry => entry.item.kind === 'data-list'
+    ? [...entry.node.querySelectorAll('button:not(:disabled)')].map(control => ({ item:entry.item,node:control,control }))
+    : [entry]).sort((a,b) => a.item.order-b.item.order);
+  selected = 0;
+  if (interactive.length && navigationEnabled) {
+   const index = interactive.findIndex(entry => entry.control === previous?.control ||
+    entry.item === previous?.item && entry.item.kind === 'data-list' &&
+    entry.control.dataset.uiListRow === previous.control.dataset.uiListRow);
+   focus(Math.max(0,index),moveFocus);
+  } else if (moveFocus) canvas.focus({ preventScroll:true });
+ }
+ function onFocus(event) {
+  const index = interactive.findIndex(entry => entry.control === event.target);
+  if (index >= 0) focus(index,false);
+ }
+ function onListClick(event) {
+  const button = event.target.closest('button[data-ui-list-row]');
+  if (!button || button.disabled) return;
+  const index = interactive.findIndex(entry => entry.control === button);
+  if (index < 0) return;
+  focus(index,false);
+  activate(interactive[index].item.id,button.dataset.uiListRow);
+ }
+ layer.addEventListener('focusin',onFocus);
+ layer.addEventListener('click',onListClick);
  function notify(item,value) {
   values.set(item.id,value);
   activate(item.id,value);
@@ -289,15 +331,14 @@ function createGameOverlay(layer, canvas, activate, styles = [], data) {
    const restoreFocus = layer.contains(document.activeElement);
    const { ordered } = arrangeUI(screen?.items ?? [],canvas);
    controls = ordered.map(({item,box}) => {
+    if (isUIInteractive(item) && !canActivate(item)) item = { ...item,disabled:true };
     const node = createUIControl(item,vars,styleMap.get(item.style),values,data);
     positionUIBounds(node,box);
     return { item,node,control:item.kind === 'button' ? node : node.children[1] };
    });
-   interactive = controls.filter(({item}) => isUIInteractive(item) && !item.disabled).sort((a,b) => a.item.order-b.item.order);
-   interactive.forEach((entry,index) => {
-    const {item,control} = entry;
-    control.addEventListener('focus',() => focus(index,false));
-    if (item.kind === 'button') control.addEventListener('click',() => { focus(index,false); activate(item.id); });
+   for (const {item,control} of controls) {
+    if (item.disabled) continue;
+    if (item.kind === 'button') control.addEventListener('click',() => activate(item.id));
     if (item.kind === 'toggle') control.addEventListener('click',() => {
      const value = control.getAttribute('aria-pressed') !== 'true';
      control.setAttribute('aria-pressed',String(value));
@@ -305,16 +346,21 @@ function createGameOverlay(layer, canvas, activate, styles = [], data) {
     });
     if (item.kind === 'slider') control.addEventListener('input',() => notify(item,control.valueAsNumber));
     if (item.kind === 'dropdown') control.addEventListener('change',() => notify(item,control.value));
-   });
+   }
    layer.replaceChildren(...controls.map(({node}) => node));
    layer.classList.toggle('void-ui-paused',Boolean(screen?.pause));
-   selected = 0;
-   const menu = interactive.length && screen?.navigation !== false;
-   if (menu) focus(0,restoreFocus);
-   else if (restoreFocus) canvas.focus({ preventScroll: true });
+   navigationEnabled = screen?.navigation !== false;
+   rebuildNavigation(restoreFocus);
    resize();
   },
-  update(vars) { for (const {item,node} of controls) updateUIControl(node,item,vars,values,data); },
+  update(vars) {
+   const active = document.activeElement;
+   let listChanged = false;
+   for (const {item,node} of controls) {
+    if (updateUIControl(node,item,vars,values,data) && item.kind === 'data-list') listChanged = true;
+   }
+   if (listChanged) rebuildNavigation(interactive.some(entry=>entry.control === active) && !layer.contains(active));
+  },
   navigate(input) {
    const horizontal = Number(input.pressed('menu-right'))-Number(input.pressed('menu-left'));
    if (input.pressed('menu-up')) focus(selected-1,true);
@@ -332,6 +378,12 @@ function createGameOverlay(layer, canvas, activate, styles = [], data) {
   },
   get canNavigate() { return interactive.length > 0; },
   owns(node) { return node instanceof Node && layer.contains(node); },
-  remove() { observer.disconnect(); layer.replaceChildren(); layer.classList.remove('void-ui-paused'); },
+  remove() {
+   observer.disconnect();
+   layer.removeEventListener('focusin',onFocus);
+   layer.removeEventListener('click',onListClick);
+   layer.replaceChildren();
+   layer.classList.remove('void-ui-paused');
+  },
  };
 }

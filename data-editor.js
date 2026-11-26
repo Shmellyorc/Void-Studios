@@ -3,6 +3,11 @@ const dataFile = () => P.dataFiles?.find(file=>file.id === dataWorkspace.file);
 const dataTable = () => dataFile()?.tables.find(table=>table.id === dataWorkspace.table);
 const dataEnum = () => P.enums.find(item=>item.id === dataWorkspace.enum);
 
+function dataTableOptions(project = P) {
+ return (project.dataFiles ?? []).flatMap(file=>file.tables.map(table=>
+  [dataReference(file.id,table.id),file.name + ' · ' + table.name]));
+}
+
 function dataRowOptions(project = P) {
  return (project.dataFiles ?? []).flatMap(file=>file.tables.flatMap(table=>table.rows.map(row=>
   [dataReference(file.id,table.id,row.id),[file.name,table.name,row.key].join(' · ')])));
@@ -49,13 +54,19 @@ function dataCell(row,column,artworkOptions) {
  const value = row.values[column.id] ?? dataFieldDefault(column.type);
  const key = 'data-cell.' + row.id + '.' + column.id;
  if (column.type === 'boolean') return checkbox(column.name,key,value);
+ if (column.type === 'longText') {
+  return `<label>${esc(column.name)}<textarea data-field="${esc(key)}" rows="2">${esc(value)}</textarea></label>`;
+ }
+ if (column.type === 'row') {
+  return select(column.name,key,value,[['','None'],...dataOptionsWithMissing(artworkOptions.rows,value)]);
+ }
  if (column.type === 'enum') {
   const type = P.enums.find(item=>item.id === column.enum);
   const choices = (type?.values ?? []).map(member=>[tileEnumToken(type,member),member.name]);
   return select(column.name,key,value,[['','None'],...dataOptionsWithMissing(choices,value)]);
  }
  if (column.type === 'sprite') {
-  const label = studioArtworkLabel(value,artworkOptions);
+  const label = studioArtworkLabel(value,artworkOptions.sprites);
   return `<button type="button" class="data-artwork-cell" data-act="data:artwork:${esc(row.id)}:${esc(column.id)}"
    data-artwork-reference="${esc(value)}" title="${esc(label)}" aria-label="${esc(column.name+': '+label)}"><span>${esc(label)}</span></button>`;
  }
@@ -93,7 +104,10 @@ function renderDataWorkspace() {
    button('Delete Enum','data:deleteEnum','danger ghost') + '</div>' : '');
   return;
  }
- const artworkOptions = new Map(table?.columns.some(column=>column.type === 'sprite') ? studioArtworkOptions() : []);
+ const cellOptions = {
+  sprites:new Map(table?.columns.some(column=>column.type === 'sprite') ? studioArtworkOptions() : []),
+  rows:table?.columns.some(column=>column.type === 'row') ? dataRowOptions() : [],
+ };
  content.innerHTML = file ? '<div class="data-section-tools">' + button('New Table…','data:newTable','primary') +
   (table ? select('Table','data-table-choice',table.id,file.tables.map(item=>[item.id,item.name])) +
    button('Add Column…','data:newColumn') + button('Add Row…','data:newRow') : '') + '</div>' +
@@ -102,7 +116,7 @@ function renderDataWorkspace() {
     <small>${esc(column.type === 'enum' ? P.enums.find(item=>item.id === column.enum)?.name ?? 'Missing enum' : studioDataTypes[column.type])}</small></th>`).join('')
   }<th scope="col"><span class="data-sr-only">Row actions</span></th></tr></thead><tbody>${
    table.rows.map(row=>'<tr><td>'+field('Row key','data-row-key.'+row.id,row.key)+'</td>'+
-    table.columns.map(column=>'<td>'+dataCell(row,column,artworkOptions)+'</td>').join('')+
+    table.columns.map(column=>'<td>'+dataCell(row,column,cellOptions)+'</td>').join('')+
     '<td>'+button('×','data:removeRow:'+row.id,'danger ghost')+'</td></tr>').join('')
   }</tbody></table></div>` + (!table.rows.length ? '<div class="empty">Add a row to enter values.</div>' : '') :
    '<div class="empty">Create a table to store related data.</div>') :

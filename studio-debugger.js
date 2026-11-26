@@ -44,7 +44,8 @@ function debugLabel(event, kind) {
 }
 
 function preparePreviewDebug(project) {
- Object.assign(editorDebug, { project, mode: 'running', point: null, sourceKey: sourceKey(editorEventSource()), selected: '',
+ const source = project.activeLayout === L().id ? editorEventSource() : { kind:'layout',id:project.activeLayout };
+ Object.assign(editorDebug, { project, mode: 'running', point: null, sourceKey: sourceKey(source), selected: '',
   trace: [], samples: [], sequence: 0, lastRefresh: 0, inspectedPoint: null,
   conditions: { layout: studioBlockCatalog('condition', false, project), behavior: studioBlockCatalog('condition', true, project) },
   actions: studioBlockCatalog('action', false, project) });
@@ -53,6 +54,10 @@ function preparePreviewDebug(project) {
  delete $('#debug-sheet-rows').dataset.rendered;
  delete $('#debug-trace').dataset.sequence;
  delete $('#debug-object').dataset.objects;
+ delete $('#debug-watch-object').dataset.objects;
+ delete $('#debug-watch-list').dataset.watches;
+ finishWatchEdit();
+ debugStatus($('#debug-edit-status'),'');
  $('#debug-tracing').checked = editorDebug.traceEnabled;
  $('#debug-follow').checked = editorDebug.follow;
  $('#debug-profiling').checked = editorDebug.profiling;
@@ -80,12 +85,15 @@ function preparePreviewDebug(project) {
   onResume(command) {
    editorDebug.mode = command === 'continue' || command === 'frame' ? 'running' : 'stepping';
    editorDebug.point = editorDebug.inspectedPoint = null;
+   debugStatus($('#debug-edit-status'),'');
    if (command === 'continue') $('#gamecanvas').focus({ preventScroll: true });
    renderPreviewDebug(true);
   },
-  onReset(paused) {
+  onReset(paused,selected) {
    Object.assign(editorDebug, { mode: paused ? 'paused' : 'running', point: null, inspectedPoint: null,
-    selected: '', trace: [], samples: [] });
+    selected: String(selected ?? ''), trace: [], samples: [] });
+   if (paused) $('#debug').textContent = 'Paused before the first frame.';
+   debugStatus($('#debug-edit-status'),'');
    renderPreviewDebug(true);
   },
  };
@@ -118,13 +126,14 @@ function renderPreviewDebug(force = false) {
  $('#debug-run-state').textContent = point ? `${point.breakpoint ? 'Breakpoint' : 'Step'} · ${point.source.name} · frame ${point.frame}`
   : paused ? 'Paused' : editorDebug.mode === 'stepping' ? 'Stepping to next action…' : 'Running';
  if (!editorDebug.open) return;
- for (const pane of ['sheet','objects','profiler']) {
+ for (const pane of ['sheet','objects','watches','profiler']) {
   $('#debug-pane-' + pane).hidden = editorDebug.pane !== pane;
   $('#debug-tab-' + pane).setAttribute('aria-pressed', String(editorDebug.pane === pane));
  }
  const snapshot = runtime?.inspect();
  if (editorDebug.pane === 'sheet') renderDebugSheet(snapshot);
  else if (editorDebug.pane === 'objects') renderDebugObjects(snapshot);
+ else if (editorDebug.pane === 'watches') renderDebugWatches(snapshot);
  else renderDebugProfiler(snapshot);
 }
 
@@ -206,9 +215,8 @@ function debugTable(entries) {
  return `<dl class="debug-values">${entries.map(([key,value]) => `<dt>${esc(key)}</dt><dd>${esc(plainDebugValue(value))}</dd>`).join('')}</dl>`;
 }
 
-function renderDebugObjects(snapshot) {
- const types = snapshot?.objects ?? [];
- const picker = $('#debug-object');
+function updateDebugObjectPicker(picker,snapshot) {
+ const types = (snapshot?.objects ?? []).filter(object=>!object.dead);
  const object = editorDebug.selected ? types.find(object => String(object.id) === editorDebug.selected) : types[0];
  const removed = editorDebug.selected && !object;
  if (object) editorDebug.selected = String(object.id);
@@ -219,14 +227,44 @@ function renderDebugObjects(snapshot) {
   picker.dataset.objects = signature;
  }
  picker.value = editorDebug.selected;
+ picker.disabled = !types.length;
+ return {object,removed};
+}
+
+function debugEditField(group,key,label,value,field = {}) {
+ const type = typeof value;
+ const attrs = `data-debug-group="${group}" data-debug-key="${esc(key)}" data-debug-label="${esc(label)}"`;
+ if (type === 'boolean') return `<label class="check"><input type="checkbox" ${attrs} ${value ? 'checked' : ''}> ${esc(label)}</label>`;
+ const input = type === 'number' ? `<input type="number" step="any" value="${esc(value)}" required ${attrs}
+  ${field.min !== undefined ? 'min="'+field.min+'"' : ''} ${field.max !== undefined ? 'max="'+field.max+'"' : ''}>` :
+  type === 'string' && !/[\r\n]/.test(value) ? `<input type="text" value="${esc(value)}" ${attrs}>` :
+  `<textarea rows="2" ${attrs} data-debug-format="${type === 'string' ? 'text' : 'json'}">
+${esc(type === 'string' ? value : JSON.stringify(value) ?? 'null')}</textarea>`;
+ return `<label>${esc(label)}${input}</label>`;
+}
+
+function renderDebugObjects(snapshot) {
+ const {object,removed} = updateDebugObjectPicker($('#debug-object'),snapshot);
  const state=object?.animationState;
  const animation=state ? [['Animation state',state.name],['Speed',+state.speed.toFixed(1)+' px/s'],
   ['Animation control',state.manual?'Manual · '+state.manual:'State machine']] : [];
- const entries = object ? [['X',+object.x.toFixed(2)],['Y',+object.y.toFixed(2)],['Rotation',+object.angle.toFixed(2)],
-  ['Visible',object.visible],['Animation',object.animation?.clip?.name ?? ''],['Navigation',object.navigation?.status ?? ''],
-  ...animation,...Object.entries(object.vars ?? {})] : [];
+ const editable = Boolean(object && editorDebug.mode === 'paused');
+ const entries = object ? [
+  ...(editable ? [] : [['X',+object.x.toFixed(2)],['Y',+object.y.toFixed(2)],['Rotation',+object.angle.toFixed(2)],['Visible',object.visible]]),
+  ['Animation',object.animation?.clip?.name ?? ''],['Navigation',object.navigation?.status ?? ''],
+  ...animation,...(editable ? [] : Object.entries(object.vars ?? {})),
+ ] : [];
  $('#debug-object-data').innerHTML = entries.length ? debugTable(entries)
   : `<p class="muted">${removed ? 'This instance is no longer live.' : 'No live instances.'}</p>`;
+ const form = $('#debug-instance-form');
+ form.hidden = !editable;
+ if (editable) {
+  const fields = Object.entries(previewInstanceFields).filter(([key])=>key !== 'text' || T(object.type)?.kind === 'text')
+   .map(([key,field])=>debugEditField('property',key,field.label,object[key],field));
+  const variables = Object.entries(object.vars).map(([key,value])=>debugEditField('variable',key,key,value));
+  $('#debug-instance-fields').innerHTML = '<div class="debug-edit-grid">'+fields.join('')+'</div>' +
+   (variables.length ? '<h4>INSTANCE VARIABLES</h4><div class="debug-edit-grid">'+variables.join('')+'</div>' : '');
+ }
  const history=$('#debug-animation-history');
  history.hidden=!state;
  history.innerHTML=state?'<h4>ANIMATION TRANSITIONS</h4><ol>'+[...state.history].reverse().map(change=>
@@ -234,6 +272,106 @@ function renderDebugObjects(snapshot) {
    <small>Frame ${change.frame} · ${esc(change.reason)}</small></li>`).join('')+'</ol>':'';
  const globals = Object.entries(snapshot?.vars ?? {});
  $('#debug-global-data').innerHTML = globals.length ? debugTable(globals) : '<p class="muted">No global variables.</p>';
+}
+
+function debugStatus(node,message,error = false) {
+ if (node.textContent !== message) node.textContent = message;
+ node.classList.toggle('debug-error',error);
+}
+
+function finishWatchEdit() {
+ editorDebug.editingWatch = null;
+ $('#debug-watch-expression').value = '';
+ $('#debug-watch-save').textContent = 'Add watch';
+ $('#debug-watch-cancel').hidden = true;
+ debugStatus($('#debug-watch-status'),'');
+}
+
+function renderDebugWatches(snapshot) {
+ updateDebugObjectPicker($('#debug-watch-object'),snapshot);
+ const list = $('#debug-watch-list');
+ const watches = P.previewSettings?.watches ?? [];
+ const signature = JSON.stringify(watches);
+ if (list.dataset.watches !== signature) {
+  list.innerHTML = watches.map((expression,index)=>`<div class="debug-watch-row">
+   <button type="button" class="debug-watch-expression" data-watch-edit="${index}" title="Edit expression">${esc(expression)}</button>
+   <output class="debug-watch-value" aria-live="off"></output>
+   <button type="button" data-watch-remove="${index}" aria-label="Remove watch ${esc(expression)}">×</button>
+  </div>`).join('') || '<p class="muted">Add an expression to watch it update as the game runs.</p>';
+  list.dataset.watches = signature;
+ }
+ for (const [index,output] of [...list.querySelectorAll('output')].entries()) {
+  try {
+   const result = runtime ? plainDebugValue(runtime.evaluateWatch(watches[index],Number(editorDebug.selected))) : '—';
+   debugStatus(output,result);
+  } catch (error) { debugStatus(output,error.message,true); }
+ }
+}
+
+function setupPreviewWatches() {
+ $('#debug-watch-form').onsubmit = event => {
+  event.preventDefault();
+  const input = $('#debug-watch-expression'), expression = input.value.trim(), index = editorDebug.editingWatch;
+  const watches = P.previewSettings?.watches ?? [];
+  try {
+   if (!expression || expression.length > 300) throw Error('Enter an expression up to 300 characters.');
+   parseEventExpression(expression);
+   if (watches.some((watch,i)=>watch === expression && i !== index)) throw Error('Already watching this expression.');
+   checkpoint();
+   const settings = previewProjectSettings(P);
+   if (index === null) settings.watches.push(expression);
+   else settings.watches[index] = expression;
+   persist();
+   finishWatchEdit();
+   renderPreviewDebug(true);
+   input.focus();
+  } catch (error) { debugStatus($('#debug-watch-status'),error.message,true); }
+ };
+ $('#debug-watch-cancel').onclick = finishWatchEdit;
+ $('#debug-watch-list').onclick = event => {
+  const target = event.target.closest('[data-watch-edit],[data-watch-remove]');
+  if (!target) return;
+  const input = $('#debug-watch-expression'), watches = P.previewSettings?.watches ?? [];
+  if (target.hasAttribute('data-watch-edit')) {
+   const index = Number(target.dataset.watchEdit);
+   editorDebug.editingWatch = index;
+   input.value = watches[index];
+   $('#debug-watch-save').textContent = 'Update watch';
+   $('#debug-watch-cancel').hidden = false;
+   debugStatus($('#debug-watch-status'),'');
+  } else {
+   checkpoint();
+   watches.splice(Number(target.dataset.watchRemove),1);
+   persist();
+   finishWatchEdit();
+   renderPreviewDebug(true);
+  }
+  input.focus();
+ };
+}
+
+function setupPreviewInstanceEditor() {
+ $('#debug-instance-form').onsubmit = event => {
+  event.preventDefault();
+  const status = $('#debug-edit-status');
+  try {
+   const edits = [...event.currentTarget.querySelectorAll('[data-debug-key]')].flatMap(input => {
+    const {debugGroup:group,debugKey:key,debugLabel:label,debugFormat:format} = input.dataset;
+    const checkbox = input.type === 'checkbox';
+    if (checkbox ? input.checked === input.defaultChecked : input.value === input.defaultValue) return [];
+    let value;
+    try {
+     value = checkbox ? input.checked : input.type === 'number' ? input.valueAsNumber :
+      format === 'json' ? JSON.parse(input.value) : input.value;
+    } catch { throw Error('Enter valid JSON for ' + label + '.'); }
+    return [{group,key,value}];
+   });
+   if (!edits.length) { debugStatus(status,'No values changed.'); return; }
+   runtime.editPreviewInstance(Number(editorDebug.selected),edits);
+   renderPreviewDebug(true);
+   debugStatus(status,'Updated in Preview.');
+  } catch (error) { debugStatus(status,error.message,true); }
+ };
 }
 
 function renderDebugProfiler(snapshot) {
@@ -262,6 +400,8 @@ function renderDebugProfiler(snapshot) {
 }
 
 function setupPreviewDebugger() {
+ setupPreviewWatches();
+ setupPreviewInstanceEditor();
  $('#toggle-preview-inspector').onclick = () => setPreviewInspector(!editorDebug.open);
  $('#pause').onclick = () => runtime?.debugCommand(editorDebug.mode === 'paused' ? 'continue' : 'pause');
  $('#step').onclick = () => runtime?.debugCommand('frame');
@@ -279,7 +419,11 @@ function setupPreviewDebugger() {
   const point = editorDebug.inspectedPoint ?? editorDebug.point;
   if (source) showGeneratedJavaScript(source, point && sourceKey(point.source) === sourceKey(source) ? point.id : undefined, editorDebug.project);
  };
- $('#debug-object').onchange = event => { editorDebug.selected = event.target.value; renderPreviewDebug(true); };
+ for (const picker of [$('#debug-object'),$('#debug-watch-object')]) picker.onchange = event => {
+  editorDebug.selected = event.target.value;
+  debugStatus($('#debug-edit-status'),'');
+  renderPreviewDebug(true);
+ };
  $('#debug-tracing').onchange = event => { editorDebug.traceEnabled = event.target.checked; renderPreviewDebug(true); };
  $('#debug-follow').onchange = event => { editorDebug.follow = event.target.checked; editorDebug.inspectedPoint = null; renderPreviewDebug(true); };
  $('#debug-profiling').onchange = event => { editorDebug.profiling = event.target.checked; renderPreviewDebug(true); };

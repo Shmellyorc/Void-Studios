@@ -1,10 +1,23 @@
 const triggerCommands=new Set(['start','created','keyPressed','inputPressed','uiActivated','uiChanged','uiOpened','mousePressed','collision',
- 'clipFinished','animationStateEntered','navArrived','navFailed']);
+ 'clipFinished','animationStateEntered','navArrived','navFailed','checkpointLoaded','uiListSelected']);
 const commandsByDevice={mousePressed:'Mouse',keyDown:'Keyboard',keyPressed:'Keyboard',inputDown:'Input',inputPressed:'Input',
  uiActivated:'UI',uiChanged:'UI',uiOpened:'UI',showUI:'UI',restoreUI:'UI',sound:'Audio',playAudio:'Audio',stopAudio:'Audio',
- audioVolume:'Audio',audioBusVolume:'Audio',fadeAudio:'Audio'};
-const eventOwnerIcons={System:'⚙',Mouse:'⌖',Keyboard:'⌨',Input:'◈',UI:'▣',Audio:'♫',Self:'◉'};
+ audioVolume:'Audio',audioBusVolume:'Audio',fadeAudio:'Audio',checkpointExists:'Save Slots',checkpointLoaded:'Save Slots',
+ saveCheckpoint:'Save Slots',loadCheckpoint:'Save Slots',clearCheckpoint:'Save Slots',uiListSelected:'UI',openDialogue:'UI',
+ inventoryHas:'Inventory',inventoryAdd:'Inventory',inventoryRemove:'Inventory',inventoryClear:'Inventory'};
+const eventOwnerIcons={System:'⚙',Mouse:'⌖',Keyboard:'⌨',Input:'◈',UI:'▣',Audio:'♫',Self:'◉','Save Slots':'▤',Inventory:'▧'};
 const eventCommandDescriptions={
+ checkpointExists:'Check whether this slot holds a usable checkpoint.',
+ checkpointLoaded:'Run on the initial tick after loading a checkpoint.',
+ saveCheckpoint:'Store the current scene, selected globals, and the position of an optional placed object.',
+ loadCheckpoint:'Open the saved scene and restore the values and position from this slot.',
+ clearCheckpoint:'Remove the checkpoint from this slot.',
+ inventoryHas:'Check the quantity of an item stored in an inventory global.',
+ inventoryAdd:'Add to the stack for this Data row.',
+ inventoryRemove:'Subtract from the stack. A stack that reaches zero disappears.',
+ inventoryClear:'Empty the inventory global.',
+ uiListSelected:'Run when the player picks a row. Leave Row as Any row to match any selection.',
+ openDialogue:'Set the active Data row and open a screen with a dialogue choices list bound to the same global.',
  start:'Run when the current layout starts.',tick:'Run once each simulation tick.',every:'Run at the interval you specify.',
  triggerOnce:'Run once while the other conditions stay true for the same selection.',
  groupActive:'Check whether this event group is enabled.',setGroupActive:'Enable or disable an event group during play.',
@@ -60,11 +73,16 @@ function fixedEventParameter(kind,key,schema,type) {
   '@layout':()=>P.layouts.map(item=>[item.id,item.name]),
   '@global':()=>P.globals.map(item=>[item.name,item.name]),
   '@dataRow':dataRowOptions,'@dataField':()=>dataFieldOptions(null),
+  '@optionalDataRow':()=>[['','Any row'],...dataRowOptions()],
+  '@uiDataList':()=>uiDataListOptions(), '@dialogueScreen':()=>P.uiScreens.filter(screen=>
+   screen.items.some(item=>item.kind === 'data-list' && item.mode === 'choices')).map(screen=>[screen.id,screen.name]),
   '@tileTag':projectTagOptions,
   '@input':uiInputOptions,'@uiButton':uiControlOptions,'@uiSetting':uiSettingOptions,'@uiScreen':uiScreenOptions,
   '@audioClip':audioClipOptions,'@audioBus':()=>[['','Clip default'],...Object.entries(audioBuses)],
   '@mixBus':()=>Object.entries(audioBuses),
   '@group':eventGroupOptions,
+  '@checkpointSlot':()=>checkpointSlotOptions,
+  '@checkpointObject':()=>[['','Scene start'],...P.types.map(item=>[item.id,item.name])],
   '@mouseButton':()=>[['0','Left'],['1','Middle'],['2','Right'],['','Any button']],
   '@activation':()=>[['true','Enabled'],['false','Disabled']],
  };

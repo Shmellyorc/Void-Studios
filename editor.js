@@ -46,6 +46,21 @@ C.groupActive=['Groups','Is group active',[['group','Group','@group']]];
 A.setGroupActive=['Groups','Set group active',[['group','Group','@group'],['active','Status','@activation']]];
 A.aimAt=['Transform','Set angle toward position',[['object','Object','@object'],['x','X','Mouse.X'],['y','Y','Mouse.Y']]];
 A.spawn=['Object','Spawn object',[['object','Object','@object'],['child','Spawned object','@object'],['x','X','Self.x + Self.w / 2'],['y','Y','Self.y + Self.h / 2']]];
+C.checkpointExists = ['Save Slots','Has checkpoint',[['slot','Save slot','@checkpointSlot']]];
+C.checkpointLoaded = ['Save Slots','On checkpoint loaded',[]];
+A.saveCheckpoint = ['Save Slots','Save checkpoint',[
+ ['slot','Save slot','@checkpointSlot'],['spawn','Placed object to return to','@checkpointObject'],
+ ['globals','Globals to keep (comma-separated)',''],
+]];
+A.loadCheckpoint = ['Save Slots','Load checkpoint',[['slot','Save slot','@checkpointSlot']]];
+A.clearCheckpoint = ['Save Slots','Clear checkpoint',[['slot','Save slot','@checkpointSlot']]];
+C.inventoryHas = ['Inventory','Has item',[['name','Inventory global','@global'],['row','Item','@dataRow'],['quantity','Quantity','1']]];
+C.uiListSelected = ['UI','On data list row selected',[['control','Data list','@uiDataList'],['row','Row','@optionalDataRow']]];
+A.inventoryAdd = ['Inventory','Add item',[['name','Inventory global','@global'],['row','Item','@dataRow'],['quantity','Quantity','1']]];
+A.inventoryRemove = ['Inventory','Remove item',[['name','Inventory global','@global'],['row','Item','@dataRow'],['quantity','Quantity','1']]];
+A.inventoryClear = ['Inventory','Clear inventory',[['name','Inventory global','@global']]];
+A.openDialogue = ['UI','Open dialogue',[['screen','Dialogue screen','@dialogueScreen'],['name','Dialogue row global','@global'],
+ ['row','First dialogue row','@dataRow']]];
 const BEHAVIOR_CONDITIONS = { created: ['Self', 'On instance created', []], ...C };
 A.setDataRow = ['Data','Set global to data row',[['name','Global','@global'],['row','Row','@dataRow']]];
 A.setGlobalFromData = ['Data','Set global from data field',[['name','Global','@global'],['field','Field','@dataField']]];
@@ -231,6 +246,7 @@ function deleteBehaviorSheet(sheet) {
 function checkpoint(){history.push(JSON.stringify(P));if(history.length>60)history.shift();future=[];dirty=true}function persist(){let stored=true;try{localStorage.setItem('void-creator-v1',JSON.stringify(P))}catch{stored=false}$('#projectname').textContent=P.name;$('#status').textContent=stored?(dirty?'Local autosave • '+L().name:'Ready • '+L().name):'Autosave storage is full. Save the project to disk.';$('#undo').disabled=!history.length;$('#redo').disabled=!future.length}function change(fn){checkpoint();fn();render()}
 function button(label,action,cls=''){return `<button class="${cls}" data-act="${action}">${esc(label)}</button>`}function field(label,id,value,type='text'){return `<label>${esc(label)}<input data-field="${id}" type="${type}" value="${esc(value)}" ${type==='number'?'step="any"':''}></label>`}function checkbox(label,id,v){return `<label class="check"><input type="checkbox" data-field="${id}" ${v?'checked':''}>${esc(label)}</label>`}function select(label,id,value,options){return `<label>${esc(label)}<select data-field="${id}">${options.map(([v,n])=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(n)}</option>`).join('')}</select></label>`}
 function render() {
+ if (!validGameSaveId(P.gameSaveId)) P.gameSaveId = crypto.randomUUID();
  if (tab !== 'sprite') stopSpriteTimeline(false);
  if (tab !== 'audio') haltAudioAudition(true);
  const layout = L(), instances = expandedLayoutInstances(P,layout);
@@ -306,7 +322,7 @@ async function projectFileSelected(event) {
  const request = ++projectOpenRequest;
  const previous = P;
  try {
-  const project = validate(await openProjectFile(file));
+  const project = normalizePreviewSettings(validate(await openProjectFile(file)));
   if (request !== projectOpenRequest || P !== previous) return;
   change(() => { P = project; eventWorkspace.focus=''; selected = openSheetId = null; activeType = P.types[0]?.id; });
  } catch (error) {
@@ -315,7 +331,7 @@ async function projectFileSelected(event) {
 }
 
 function renderGameHTML(project, icon) {
- const { spriteDocuments, spriteLayers, ...gameProject } = project;
+ const { spriteDocuments, spriteLayers, previewSettings, ...gameProject } = project;
  const artwork = studioDataArtworkIds(project);
  if (artwork.size) {
   gameProject.spriteDocuments = (spriteDocuments ?? []).filter(doc => artwork.has(doc.id));
@@ -328,10 +344,12 @@ function renderGameHTML(project, icon) {
  const effects = $('#effects-source').outerHTML;
  const uiLayout = $('#ui-layout-source').outerHTML;
  const uiSource = $('#game-ui-source').outerHTML;
+ const dataListSource = $('#game-data-list-source').outerHTML;
  const studioFontsSource = $('#studio-fonts-source').outerHTML;
  const fontLicenses = (project.fonts ?? []).filter(font=>font.license).map(font=>font.name+'\n'+font.license).join('\n\n');
  const studioDataSource = $('#studio-data-source').outerHTML;
  const audioSource = $('#audio-source').outerHTML;
+ const savesSource = $('#game-saves-source').outerHTML;
  const uiStyle = $('#game-ui-style').outerHTML;
  const behaviors = $('#behavior-source').outerHTML;
  const navigation = $('#navigation-source').outerHTML;
@@ -375,8 +393,10 @@ ${components}
 ${uiLayout}
 ${studioDataSource}
 ${studioFontsSource}
+${dataListSource}
 ${uiSource}
 ${audioSource}
+${savesSource}
 <script>
 ${runtime}
 const project = ${data};
@@ -384,6 +404,7 @@ const compiledEvents = ${compiled?.code ?? 'null'};
 const game = createRuntime(project, document.querySelector('#game'), {
  compiledEvents,
  uiLayer: document.querySelector('#game-ui'),
+ saveStorage: () => window.localStorage,
  error: message => document.querySelector('#err').textContent = message,
  renderer: message => document.querySelector('#renderer').textContent = message,
 });
@@ -397,22 +418,24 @@ document.querySelector('#restart').onclick = () => {
 </html>`;
 }
 
-function play() {
+function play({spawn,startPaused = false} = {}) {
  if (runtime) return;
  haltAudioAudition(true);
  if (tab === 'audio') renderAudioWorkspace();
  const snapshot = clone(P);
+ if (spawn) snapshot.activeLayout = spawn.layout;
  const generated = snapshot.executionMode === 'interpreted' ? null : compileStudioEvents(snapshot);
  const compiledEvents = generated && loadCompiledStudioEvents(generated);
  $('#preview').showModal();
  $('#renderstatus').textContent = 'Canvas 2D · starting';
  $('#previewtitle').textContent = P.name;
- $('#debug').textContent = 'Starting runtime...';
+ $('#debug').textContent = startPaused ? 'Paused before the first frame.' : 'Starting runtime...';
  $('#errors').textContent = (generated?.diagnostics ?? []).map(issue =>
   `[Compiler] ${issue.source.name} · Event ${issue.number} · ${issue.field} · ${issue.message}\n`).join('');
  const debuggerHooks = preparePreviewDebug(snapshot);
  runtime = createRuntime(snapshot, $('#gamecanvas'), {
   debugger: debuggerHooks,
+  previewSpawn: spawn,
   uiLayer: $('#preview-ui'),
   compiledEvents,
   tick(state) {
@@ -425,6 +448,8 @@ function play() {
   renderer: message => { $('#renderstatus').textContent = message; },
  });
  runtime.start();
+ if (startPaused) { setPreviewInspector(true); runtime.debugCommand('pause'); }
+ else renderPreviewDebug(true);
  $('#gamecanvas').focus({ preventScroll: true });
 }
 function stop() {
@@ -433,7 +458,7 @@ function stop() {
  if ($('#preview').open) $('#preview').close();
  if (tab === 'events') renderEvents();
 }
-function act(s){let [a,...args]=s.split(':');let o=I(),t=T(o?.type||activeType);switch(a){case 'font':studioFontAction(...args);break;case 'data':dataAction(...args);break;case 'datatab':tab='data';projectPanel.expanded.add('data');render();break;case 'ui':studioUIAction(...args);break;case 'uitab':tab='ui';render();break;case 'audiotab':tab='audio';render();break;case 'audio':studioAudioAction(...args);break;case 'spritetab':tab='sprite';render();break;case 'sprite':spriteEditorAction(...args);break;case 'prefab':prefabAction(...args);break;case 'extension':extensionActionUI(...args);break;case 'evt':eventWorkspaceAction(...args);break;case 'sheetJS':showGeneratedJavaScript(editorEventSource());break;case 'eventJS':showGeneratedJavaScript(editorEventSource(),Number(args[0]));break;case 'breakpoint':toggleBreakpoint(editorEventSource(),args[0]);renderEvents();break;case 'cameraSettings':configureSceneCamera(L());break;case 'cameraReset':$('#dialog').close();change(()=>{delete L().camera});break;case 'tile':tileEditorAction(...args);break;case 'anim':animatorAction(...args);break;case 'new':if(confirm('Start a blank project? Save your current project first.'))change(()=>{P={version:12,eventSheets:[],spriteDocuments:[],spriteLayers:[],audioClips:[],audioMixer:{...audioDefaults},uiScreens:[],uiStyles:[],inputActions:[],prefabs:[],extensions:[],tilesets:[],enums:[],name:'Untitled game',activeLayout:'main',behaviorSheets:[],globals:[],types:[],layouts:[{id:'main',name:'Scene 1',width:640,height:360,background:'#182535',instances:[],events:[]}]};selected=activeType=openSheetId=null});break;case 'demo':if(confirm('Load Shard Runner demo?'))change(()=>{P=demo();selected=openSheetId=null;activeType='player'});break;case 'rename':simple('Project name',field('Name','name',P.name),v=>change(()=>P.name=v.name||'Untitled'));break;case 'save':saveProject();break;case 'open':$('#projectfile').click();break;case 'play':play();break;case 'undo':if(history.length){future.push(JSON.stringify(P));P=JSON.parse(history.pop());selected=null;render()}break;case 'redo':if(future.length){history.push(JSON.stringify(P));P=JSON.parse(future.pop());selected=null;render()}break;case 'tiletab':haltAnimator();tab='tiles';render();break;case 'animtab':tab='animate';render();break;case 'layouttab':tab='layout';render();break;case 'eventtab':tab='events';openSheetId=null;eventWorkspace.focus='';render();break;case 'addLayout':simple('New Scene',field('Name','name','Scene '+(P.layouts.length+1))+field('Width','width',640,'number')+field('Height','height',360,'number'),v=>change(()=>{let id=uid();P.layouts.push({id,name:v.name,width:Math.min(4096,Math.max(64,+v.width||640)),height:Math.min(4096,Math.max(64,+v.height||360)),background:'#182535',instances:[],events:[]});P.activeLayout=id;selected=null;tab='layout';revealProjectItem('scene:'+id,'scenes')}));break;case 'deleteLayout':if(P.layouts.length>1&&confirm('Delete this scene?'))change(()=>{P.layouts=P.layouts.filter(l=>l.id!==L().id);P.activeLayout=P.layouts[0].id;selected=null});break;case 'addType':simple('New Object',field('Name','name','Object'+(P.types.length+1))+select('Kind','kind','sprite',[['sprite','Sprite'],['text','Text']])+field('Color','color','#65c8ac','color')+field('Width','w',32,'number')+field('Height','h',32,'number'),v=>{if(!/^[A-Za-z_$][\w$]*$/.test(v.name)||P.types.some(t=>t.name===v.name))throw Error('Use a unique identifier as object name');change(()=>{let id=uid();P.types.push({id,name:v.name,kind:v.kind,color:v.color,w:Math.max(1,+v.w||32),h:Math.max(1,+v.h||32),shape:'rect',behaviors:[],vars:{}});activeType=id;selected=null;tab='layout';place(T(id));revealProjectItem('object:'+id,'objects')})});break;case 'deleteType':if(t&&P.prefabs?.some(prefab=>prefab.members.some(member=>member.type===t.id))){alert('Remove this object from its prefabs before deleting the object type.');break}if(t&&confirm('Delete '+t.name+' and all instances?'))change(()=>{P.types=P.types.filter(x=>x!==t);for(let l of P.layouts)l.instances=l.instances.filter(o=>o.type!==t.id);activeType=P.types[0]?.id;selected=null});break;case 'place':change(()=>place(t));tab='layout';render();break;case 'duplicate':if(o)change(()=>{let n={...clone(o),id:uid(),x:o.x+16,y:o.y+16};L().instances.push(n);selected=n.id});break;case 'deleteInstance':if(selectedPrefabPlacement()){prefabAction('remove');break}if(o)change(()=>{L().instances=L().instances.filter(x=>x!==o);selected=null});break;case 'image':if(t?.sheet||t?.animator){tab='animate';render();$('#sprite-sheet-file').click();}else if(t)$('#imagefile').click();break;
+function act(s){let [a,...args]=s.split(':');let o=I(),t=T(o?.type||activeType);switch(a){case 'font':studioFontAction(...args);break;case 'data':dataAction(...args);break;case 'datatab':tab='data';projectPanel.expanded.add('data');render();break;case 'ui':studioUIAction(...args);break;case 'uitab':tab='ui';render();break;case 'audiotab':tab='audio';render();break;case 'audio':studioAudioAction(...args);break;case 'spritetab':tab='sprite';render();break;case 'sprite':spriteEditorAction(...args);break;case 'prefab':prefabAction(...args);break;case 'extension':extensionActionUI(...args);break;case 'evt':eventWorkspaceAction(...args);break;case 'sheetJS':showGeneratedJavaScript(editorEventSource());break;case 'eventJS':showGeneratedJavaScript(editorEventSource(),Number(args[0]));break;case 'breakpoint':toggleBreakpoint(editorEventSource(),args[0]);renderEvents();break;case 'cameraSettings':configureSceneCamera(L());break;case 'cameraReset':$('#dialog').close();change(()=>{delete L().camera});break;case 'tile':tileEditorAction(...args);break;case 'anim':animatorAction(...args);break;case 'new':if(confirm('Start a blank project? Save your current project first.'))change(()=>{P={version:12,eventSheets:[],spriteDocuments:[],spriteLayers:[],audioClips:[],audioMixer:{...audioDefaults},uiScreens:[],uiStyles:[],inputActions:[],prefabs:[],extensions:[],tilesets:[],enums:[],name:'Untitled game',activeLayout:'main',behaviorSheets:[],globals:[],types:[],layouts:[{id:'main',name:'Scene 1',width:640,height:360,background:'#182535',instances:[],events:[]}]};selected=activeType=openSheetId=null});break;case 'demo':if(confirm('Load Shard Runner demo?'))change(()=>{P=demo();selected=openSheetId=null;activeType='player'});break;case 'rename':simple('Project name',field('Name','name',P.name),v=>change(()=>P.name=v.name||'Untitled'));break;case 'save':saveProject();break;case 'open':$('#projectfile').click();break;case 'play':play();break;case 'previewSpawn':showPreviewSpawnPicker();break;case 'starterGame':loadStarterGame();break;case 'undo':if(history.length){future.push(JSON.stringify(P));P=JSON.parse(history.pop());selected=null;render()}break;case 'redo':if(future.length){history.push(JSON.stringify(P));P=JSON.parse(future.pop());selected=null;render()}break;case 'tiletab':haltAnimator();tab='tiles';render();break;case 'animtab':tab='animate';render();break;case 'layouttab':tab='layout';render();break;case 'eventtab':tab='events';openSheetId=null;eventWorkspace.focus='';render();break;case 'addLayout':simple('New Scene',field('Name','name','Scene '+(P.layouts.length+1))+field('Width','width',640,'number')+field('Height','height',360,'number'),v=>change(()=>{let id=uid();P.layouts.push({id,name:v.name,width:Math.min(4096,Math.max(64,+v.width||640)),height:Math.min(4096,Math.max(64,+v.height||360)),background:'#182535',instances:[],events:[]});P.activeLayout=id;selected=null;tab='layout';revealProjectItem('scene:'+id,'scenes')}));break;case 'deleteLayout':if(P.layouts.length>1&&confirm('Delete this scene?'))change(()=>{P.layouts=P.layouts.filter(l=>l.id!==L().id);P.activeLayout=P.layouts[0].id;selected=null});break;case 'addType':simple('New Object',field('Name','name','Object'+(P.types.length+1))+select('Kind','kind','sprite',[['sprite','Sprite'],['text','Text']])+field('Color','color','#65c8ac','color')+field('Width','w',32,'number')+field('Height','h',32,'number'),v=>{if(!/^[A-Za-z_$][\w$]*$/.test(v.name)||P.types.some(t=>t.name===v.name))throw Error('Use a unique identifier as object name');change(()=>{let id=uid();P.types.push({id,name:v.name,kind:v.kind,color:v.color,w:Math.max(1,+v.w||32),h:Math.max(1,+v.h||32),shape:'rect',behaviors:[],vars:{}});activeType=id;selected=null;tab='layout';place(T(id));revealProjectItem('object:'+id,'objects')})});break;case 'deleteType':if(t&&P.prefabs?.some(prefab=>prefab.members.some(member=>member.type===t.id))){alert('Remove this object from its prefabs before deleting the object type.');break}if(t&&confirm('Delete '+t.name+' and all instances?'))change(()=>{P.types=P.types.filter(x=>x!==t);for(let l of P.layouts)l.instances=l.instances.filter(o=>o.type!==t.id);activeType=P.types[0]?.id;selected=null});break;case 'place':change(()=>place(t));tab='layout';render();break;case 'duplicate':if(o)change(()=>{let n={...clone(o),id:uid(),x:o.x+16,y:o.y+16};L().instances.push(n);selected=n.id});break;case 'deleteInstance':if(selectedPrefabPlacement()){prefabAction('remove');break}if(o)change(()=>{L().instances=L().instances.filter(x=>x!==o);selected=null});break;case 'image':if(t?.sheet||t?.animator){tab='animate';render();$('#sprite-sheet-file').click();}else if(t)$('#imagefile').click();break;
 case 'removeImage':if(t&&(!t.animator?.clips.some(clip=>clip.frames.length)||confirm('Remove the sprite sheet and its frame sequences?')))change(()=>{delete t.spriteDocument;delete t.image;delete t.sheet;for(const clip of t.animator?.clips??[])clip.frames=[];});break;
 case 'sheet':if(t){tab='animate';render();animatorAction('slice');}break;
 case 'stress':if(confirm('Replace project with a sprite stress test? Save first.'))change(()=>{P=demo();P.name='Sprite stress test';let l=P.layouts[0];l.width=960;l.height=540;l.events=[];P.types=[{id:'particle',name:'Particle',color:'#72cfae',shape:'diamond',kind:'sprite',w:8,h:8,behaviors:[{id:'bullet',settings:{speed:100,bounce:true}}],vars:{}}];l.instances=Array.from({length:1000},(_,i)=>({id:uid(),type:'particle',x:(i*79)%950,y:(i*53)%530,w:8,h:8,angle:i*137%360,opacity:1}));P.layouts=[l];P.globals=[];selected=openSheetId=null;activeType='particle'});break;case 'addGlobal':simple('Global variable',field('Name','name','Score')+field('Initial value (JSON)','value','0'),v=>{if(!/^[A-Za-z_$][\w$]*$/.test(v.name)||P.globals.some(g=>g.name===v.name))throw Error('Use a unique identifier');let value=JSON.parse(v.value);change(()=>{P.globals.push({name:v.name,value});revealProjectItem('global:'+v.name,'globals')})});break;case 'addBehavior':if(t)showBehaviorPicker(t);break;
@@ -494,7 +519,8 @@ stage.onpointermove = e => {
  else {target.x=round(drag.old.x+dx);target.y=round(drag.old.y+dy)}
  drawEditor();
 };
-stage.onpointerup=stage.onpointercancel=()=>{drag=null;render()};stage.ondblclick=e=>{if(stamping)return;let p=point(e),t=T(activeType);if(t)change(()=>place(t,Math.round(p.x/(snap||1))*(snap||1),Math.round(p.y/(snap||1))*(snap||1)))};$('#snap').onchange=e=>{snap=+e.target.value;drawEditor()};$('#zoom').onchange=e=>{zoom=+e.target.value;drawEditor()};$('#stop').onclick=stop;$('#preview').addEventListener('cancel',e=>{e.preventDefault();stop()});$('#restart').onclick=()=>runtime?.reset(P.activeLayout);window.addEventListener('keydown',e=>{if(runtime||document.querySelector('dialog[open]')||e.composedPath()[0]?.matches?.('input,select,textarea,[contenteditable]'))return;if(e.key==='Delete'&&tab!=='data'&&!e.target.closest?.('#project-sidebar'))act(tab==='ui'?'ui:deleteItem':tab==='audio'?'audio:remove':tab==='sprite'?'sprite:clearPixels':'deleteInstance');if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();act('undo')}if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault();act('redo')}if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();act('save')}if(e.key==='F5'){e.preventDefault();play()}});$('#rendererChoice').onchange=e=>change(()=>P.renderer=e.target.value);$('#executionChoice').onchange=e=>change(()=>P.executionMode=e.target.value);setInterval(()=>{if(tab==='layout'&&!drag)drawEditor()},250);
-try{let saved=localStorage.getItem('void-creator-v1');if(saved)P=validate(JSON.parse(saved))}catch{};
+stage.onpointerup=stage.onpointercancel=()=>{drag=null;render()};stage.ondblclick=e=>{if(stamping)return;let p=point(e),t=T(activeType);if(t)change(()=>place(t,Math.round(p.x/(snap||1))*(snap||1),Math.round(p.y/(snap||1))*(snap||1)))};$('#snap').onchange=e=>{snap=+e.target.value;drawEditor()};$('#zoom').onchange=e=>{zoom=+e.target.value;drawEditor()};$('#stop').onclick=stop;$('#preview').addEventListener('cancel',e=>{e.preventDefault();stop()});$('#restart').onclick=()=>runtime?.reset();window.addEventListener('keydown',e=>{if(runtime||document.querySelector('dialog[open]')||e.composedPath()[0]?.matches?.('input,select,textarea,[contenteditable]'))return;if(e.key==='Delete'&&tab!=='data'&&!e.target.closest?.('#project-sidebar'))act(tab==='ui'?'ui:deleteItem':tab==='audio'?'audio:remove':tab==='sprite'?'sprite:clearPixels':'deleteInstance');if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();act('undo')}if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault();act('redo')}if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();act('save')}if(e.key==='F5'){e.preventDefault();play()}});$('#rendererChoice').onchange=e=>change(()=>P.renderer=e.target.value);$('#executionChoice').onchange=e=>change(()=>P.executionMode=e.target.value);setInterval(()=>{if(tab==='layout'&&!drag)drawEditor()},250);
+try{let saved=localStorage.getItem('void-creator-v1');if(saved)P=normalizePreviewSettings(validate(JSON.parse(saved)))}catch{};
 const renderStudioMenu=setupStudioMenu();
+const showPreviewSpawnPicker=setupPreviewSpawnPicker();
 setupProjectPanel();setupStudioFonts();setupDataWorkspace();setupEventWorkspace();setupTileEditor();setupAnimator();setupAnimationMachine();setupPreviewDebugger();setupComponentEditor();setupGameExport();setupUIWorkspace();setupAudioWorkspace();setupStudioSettings();setupSpriteEditor();setupWorkspaceZoom();render();window.Creator={get project(){return P},createRuntime,demo};

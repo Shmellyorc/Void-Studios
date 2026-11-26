@@ -26,7 +26,7 @@ const studioWorkspaceCommands = {
  ],
  ui: [
   ['UI',[['New Screen…','ui:newScreen'],['Add Panel','ui:add:panel'],['Add Button','ui:add:button'],['Add Label','ui:add:label'],['Add Image','ui:add:image'],
-   ['Add Bar','ui:add:bar'],['Add Slider','ui:add:slider'],['Add Toggle','ui:add:toggle'],['Add Dropdown','ui:add:dropdown'],
+   ['Add Bar','ui:add:bar'],['Add Slider','ui:add:slider'],['Add Toggle','ui:add:toggle'],['Add Dropdown','ui:add:dropdown'],['Add Data List','ui:add:data-list'],
    null,['Shared Styles…','ui:styles'],['Load Menu Demo…','ui:demo']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
@@ -121,12 +121,13 @@ function setupStudioMenu() {
  const menus = [
   ['File',[['New Project…','new'],['Open Project…','open'],['Save Project','save','Ctrl+S'],null,['Export Game…',null,null,'export-open']]],
   ['Editor',[['Undo','undo','Ctrl+Z','undo'],['Redo','redo','Ctrl+Y','redo'],null,['Settings…',null,null,'settings-open']]],
-  ['Project',[['Rename Project…','rename'],['Fonts…','font:open'],['Extensions…','extension:open'],null,['Load Demo…','demo']]],
+  ['Project',[['Rename Project…','rename'],['Fonts…','font:open'],['Extensions…','extension:open'],null,
+   ['Load Starter Game…','starterGame'],['Load Demo…','demo']]],
   ['View',[...workspaceTabs.map(([id,label,action]) => [label,action,null,null,id]),null,
    ['Zoom In','zoom:in'],['Zoom Out','zoom:out'],['Reset View','zoom:reset']]],
   ...Object.entries(studioWorkspaceCommands).flatMap(([workspace,list]) =>
    list.map(([label,entries]) => [label,entries,workspace])),
-  ['Run',[['Preview','play','F5'],null,['Load Stress Test…','stress']]],
+  ['Run',[['Preview','play','F5'],['Preview from Spawn…','previewSpawn'],null,['Load Stress Test…','stress']]],
   ['Help',[['Expressions & Help','help']]],
  ];
  $('#studio-menu-groups').innerHTML = menus.map(([name,items,workspace],index) =>

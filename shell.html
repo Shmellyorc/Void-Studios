@@ -21,7 +21,7 @@
 </style><style id="game-ui-style">/*GAME_UI_CSS*/</style></head><body><div class="app"><header><div class="brand"><div class="mark">V</div><div class="brandname">VOID STUDIO<small>VISUAL GAME STUDIO</small></div></div><div class="project" id="projectname"></div></header>
 <nav id="studio-menu" class="studio-menu" aria-label="Editor commands">
  <div id="studio-menu-groups" role="menubar" aria-label="VOID Studio"></div>
- <span class="studio-menu-version">v0.21.0</span>
+ <span class="studio-menu-version">/*STUDIO_VERSION*/</span>
 </nav>
 <main class="main"><aside class="sidebar">
 <section id="project-sidebar" aria-labelledby="project-heading">
@@ -129,6 +129,7 @@
    <nav class="debugger-tabs" aria-label="Inspector views">
     <button id="debug-tab-sheet" data-debug-pane="sheet">Event Sheet</button>
     <button id="debug-tab-objects" data-debug-pane="objects">Instances</button>
+    <button id="debug-tab-watches" data-debug-pane="watches">Watches</button>
     <button id="debug-tab-profiler" data-debug-pane="profiler">Profiler</button>
    </nav>
    <section id="debug-pane-sheet">
@@ -140,7 +141,26 @@
    </section>
    <section id="debug-pane-objects" hidden>
     <div class="debugger-options"><select id="debug-object" aria-label="Running instance"></select></div>
-    <div class="debug-value-panel"><h4>INSTANCE</h4><div id="debug-object-data"></div><section id="debug-animation-history" hidden></section><h4>GLOBALS</h4><div id="debug-global-data"></div></div>
+    <div class="debug-value-panel"><h4>INSTANCE</h4><div id="debug-object-data"></div>
+     <form id="debug-instance-form" hidden>
+      <div id="debug-instance-fields"></div>
+      <div class="debug-edit-actions"><button type="submit">Apply edits</button><span id="debug-edit-status" role="status"></span></div>
+     </form>
+     <section id="debug-animation-history" hidden></section><h4>GLOBALS</h4><div id="debug-global-data"></div>
+    </div>
+   </section>
+   <section id="debug-pane-watches" hidden>
+    <div class="debugger-options"><label for="debug-watch-object">Self</label><select id="debug-watch-object" aria-label="Instance for Self"></select></div>
+    <div class="debug-value-panel">
+     <form id="debug-watch-form">
+      <label for="debug-watch-expression">Expression</label>
+      <div class="debug-edit-actions"><input id="debug-watch-expression" type="text" maxlength="300" placeholder="Score + Self.Health" spellcheck="false" required>
+       <button id="debug-watch-save" type="submit">Add watch</button><button id="debug-watch-cancel" type="button" hidden>Cancel</button>
+      </div>
+      <p id="debug-watch-status" class="debug-status" role="status"></p>
+     </form>
+     <div id="debug-watch-list" aria-label="Expression watches"></div>
+    </div>
    </section>
    <section id="debug-pane-profiler" hidden>
     <div class="debugger-options"><label><input id="debug-profiling" type="checkbox"> Capture CPU timings</label><span id="debug-particle-count" class="muted"></span></div>
@@ -148,6 +168,33 @@
    </section>
   </aside>
  </div>
+</dialog>
+<dialog id="preview-spawn" aria-labelledby="preview-spawn-heading">
+ <form id="preview-spawn-form">
+  <div class="modalhead" id="preview-spawn-heading">Preview from Spawn</div>
+  <div class="modalbody preview-spawn-body">
+   <div class="preview-spawn-map">
+    <canvas id="preview-spawn-canvas" aria-label="Scene spawn map"></canvas>
+    <p class="muted">Click the map or enter the X and Y coordinates of the instance’s top-left corner.</p>
+   </div>
+   <div class="preview-spawn-controls">
+    <label>Scene<select id="preview-spawn-scene"></select></label>
+    <label>Spawn point<select id="preview-spawn-point"></select></label>
+    <label>Instance to move<select id="preview-spawn-instance"></select></label>
+    <div class="two">
+     <label>X<input type="number" id="preview-spawn-x" step="any" required></label>
+     <label>Y<input type="number" id="preview-spawn-y" step="any" required></label>
+    </div>
+    <label>Spawn name<input id="preview-spawn-name" maxlength="80"></label>
+    <div class="debug-edit-actions"><button type="button" id="preview-spawn-save">Save point</button>
+     <button type="button" id="preview-spawn-remove" hidden>Remove point</button></div>
+    <label class="check"><input type="checkbox" id="preview-spawn-paused"> Start paused</label>
+    <p class="debug-status" id="preview-spawn-status" role="status"></p>
+   </div>
+  </div>
+  <div class="modalfoot"><button type="button" id="preview-spawn-cancel">Cancel</button>
+   <button type="submit" id="preview-spawn-play" class="primary">Start preview</button></div>
+ </form>
 </dialog>
 <input type="file" id="font-file" hidden>
 <input type="file" id="data-file-input" accept=".voiddata,application/json" hidden>
@@ -198,4 +245,4 @@
    <button id="export-build" class="primary" type="submit">Download HTML</button>
   </div>
  </form>
-</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="studio-data-source">/*STUDIO_DATA*/</script><script id="studio-fonts-source">/*STUDIO_FONTS*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*ANIMATION_MACHINE_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*PROJECT_PANEL*/</script><script>/*ARTWORK_PICKER*/</script><script>/*DATA_EDITOR*/</script><script>/*FONT_IMPORT*/</script><script>/*FONT_EDITOR*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SFX_EDITOR*/</script><script>/*MUSIC*/</script><script>/*MUSIC_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EVENT_WORKSPACE*/</script><script>/*EVENT_PICKER_MODEL*/</script><script>/*EDITOR*/</script></body></html>
+</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="studio-data-source">/*STUDIO_DATA*/</script><script id="studio-fonts-source">/*STUDIO_FONTS*/</script><script id="game-data-list-source">/*GAME_DATA_LIST*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="game-saves-source">/*GAME_SAVES*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*ANIMATION_MACHINE_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*PREVIEW_SPAWN_EDITOR*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*PROJECT_PANEL*/</script><script>/*ARTWORK_PICKER*/</script><script>/*DATA_EDITOR*/</script><script>/*FONT_IMPORT*/</script><script>/*FONT_EDITOR*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*SHARD_RUNNER_DATA*/</script><script>/*STARTER_ART*/</script><script>/*STARTER_GAME*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SFX_EDITOR*/</script><script>/*MUSIC*/</script><script>/*MUSIC_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EVENT_WORKSPACE*/</script><script>/*EVENT_PICKER_MODEL*/</script><script>/*EDITOR*/</script></body></html>

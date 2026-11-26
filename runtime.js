@@ -279,10 +279,21 @@ function createPixiView(canvas, { report = () => {}, fonts } = {}) {
 }
 
 /* VOID Studio game runtime. */
+const previewInstanceFields = {
+ x:{label:'X'}, y:{label:'Y'}, w:{label:'Width',positive:true}, h:{label:'Height',positive:true},
+ angle:{label:'Rotation'}, opacity:{label:'Opacity',min:0,max:1},
+ vx:{label:'Velocity X'}, vy:{label:'Velocity Y'}, visible:{label:'Visible',type:'boolean'},
+ text:{label:'Text',type:'string'},
+};
+
 function createRuntime(project, canvas, hooks={}) {
  const p=normalizeProjectBehaviors(structuredClone(project)),ctx=canvas.getContext('2d'),keys=new Set(),pressed=new Set(),images=new Map(),errors=new Set();
  let objects=[],vars={},layout=null,time=0,dt=0,first=true,uid=0,frame=0,raf=0,running=false,last=0,nextLayout=null,previousPairs=new Set(),timers=new Map(),previousTimers=new Map(),changed=false,paused=false;
+ const saves = createGameSaves(p,hooks.saveStorage);
+ const placedIds = new WeakMap();
+ let nextCheckpoint, loadedCheckpoint;
  const debugHooks = hooks.debugger;
+ const debugScopes = new WeakMap();
  let frameWork, stopPoint, stepRule, pausedAt, profile;
  let excludedTime = 0;
  const clock = () => performance.now() - excludedTime;
@@ -294,10 +305,11 @@ function createRuntime(project, canvas, hooks={}) {
  const extensions = extensionRegistry(p.extensions);
  const audio = createGameAudio(p.audioClips,p.audioMixer,report);
  const input = createNamedInput(p), uiScreens = new Map((p.uiScreens ?? []).map(screen => [screen.id,screen]));
- const uiActivations = new Set(), uiChanges = new Set(), uiValues = new Map(), uiQueue = [];
+ const uiActivations = new Set(), uiChanges = new Set(), uiValues = new Map(), uiListSelections = new Map(), uiQueue = [];
  let uiScreen, openedUI, nextUIOpening;
  const studioData = createStudioData(p);
- const overlay = createGameOverlay(hooks.uiLayer,canvas,(id,value) => uiQueue.push({ screen:uiScreen,id,value }),p.uiStyles,studioData);
+ const overlay = createGameOverlay(hooks.uiLayer,canvas,(id,value) => uiQueue.push({ screen:uiScreen,id,value }),p.uiStyles,studioData,
+  item => item.command !== 'continue' || Boolean(saves.read(item.target)));
  const atlases = new Map((p.tilesets ?? []).map(atlas => [atlas.id, atlas]));
  const enums = Object.fromEntries((p.enums ?? []).map(enumType => [enumType.name,
   Object.fromEntries(enumType.values.map(value => [value.name, tileEnumToken(enumType, value)]))]));
@@ -335,7 +347,18 @@ function createRuntime(project, canvas, hooks={}) {
   }
   return object;
  }
- function enter(id) {
+ function queueLayout(id, checkpoint = null) {
+  nextLayout = id;
+  nextCheckpoint = checkpoint;
+ }
+ function loadCheckpoint(slot) {
+  const checkpoint = saves.read(slot);
+  if (checkpoint) queueLayout(checkpoint.layout,checkpoint);
+ }
+ function refreshContinueButtons(slot) {
+  if (uiScreen?.items.some(item => item.command === 'continue' && item.target === slot)) overlay?.show(uiScreen,vars);
+ }
+ function enter(id, checkpoint = null, previewSpawn = null) {
   layout = p.layouts.find(item => item.id === id) || p.layouts[0];
   camera = createSceneCamera(layout);
   canvas.width = camera.view.width;
@@ -345,7 +368,15 @@ function createRuntime(project, canvas, hooks={}) {
   triggerRecords=new WeakMap();
   tileSolids = tileSolidCells(layout.tilemap, atlases);
   readTileArtwork = createTileArtwork(layout, atlases, images);
-  objects = expandedLayoutInstances(p, layout).filter(instance => types[instance.type]).map(instance => make(types[instance.type], instance));
+  loadedCheckpoint = Boolean(checkpoint);
+  if (checkpoint) saves.restoreGlobals(checkpoint,vars);
+  const spawn = checkpoint?.spawn ?? previewSpawn;
+  objects = expandedLayoutInstances(p,layout).filter(instance => types[instance.type]).map(instance => {
+   const position = spawn && spawn.id === instance.id && spawn.type === instance.type ? { x:spawn.x, y:spawn.y } : {};
+   const object = make(types[instance.type],{ ...instance,...position });
+   placedIds.set(object,instance.id);
+   return object;
+  });
   camera.place(0, objects, true);
   updateMouseWorld();
   particles.clear();
@@ -355,10 +386,11 @@ function createRuntime(project, canvas, hooks={}) {
   timers.clear();
   previousTimers.clear();
   changed = true;
-  nextLayout = null;
+  nextLayout = nextCheckpoint = null;
   uiQueue.length = 0;
   showUI(layout.uiScreen,true);
   hooks.layout?.(layout.name);
+  if (previewSpawn) return objects.find(object=>placedIds.get(object) === previewSpawn.id)?.id;
  }
  function showUI(id, force = false) {
   const screen = uiScreens.get(id);
@@ -366,10 +398,43 @@ function createRuntime(project, canvas, hooks={}) {
   if (!force && screen === uiScreen) return;
   uiScreen = screen;
   nextUIOpening = screen?.id;
+  updateInventorySelections();
   overlay?.show(screen,vars);
  }
  function canGoBack() {
   return uiScreen && uiScreen.id !== layout.uiScreen && (uiScreen.pause || uiScreen.navigation !== false);
+ }
+ function selectDataListRow(item,ref) {
+  if (uiListSelections.has(item.id)) return;
+  const entry = dataListEntries(item,vars,studioData).find(row => row.ref === ref);
+  if (!entry) return;
+  if (item.mode === 'choices') {
+   if (!Object.hasOwn(vars,item.variable)) return;
+   vars[item.variable] = entry.next;
+   if (!entry.next) showUI(layout.uiScreen);
+  } else if (item.selectionVariable && Object.hasOwn(vars,item.selectionVariable)) {
+   vars[item.selectionVariable] = ref;
+  }
+  uiListSelections.set(item.id,ref);
+ }
+ function updateInventorySelections() {
+  for (const item of uiScreen?.items ?? []) {
+   if (item.kind !== 'data-list' || item.mode !== 'inventory' || !item.selectionVariable) continue;
+   const selected = vars[item.selectionVariable];
+   if (selected && !inventoryCount(vars[item.variable],selected)) vars[item.selectionVariable] = '';
+  }
+ }
+ function changeInventory(kind,name,row,quantity) {
+  if (!Object.hasOwn(vars,name)) throw Error('Choose a global for the inventory.');
+  if (kind === 'inventoryClear') { vars[name] = {}; return; }
+  if (!studioData.rows.has(row)) throw Error('Choose a valid item row.');
+  if (!Number.isSafeInteger(quantity) || quantity < 1) throw Error('Item quantity must be a positive whole number.');
+  const current = vars[name];
+  const collection = current && typeof current === 'object' && !Array.isArray(current) ? {...current} : {};
+  const count = inventoryCount(collection,row) + (kind === 'inventoryAdd' ? quantity : -quantity);
+  if (count > 0) collection[row] = Math.min(Number.MAX_SAFE_INTEGER,count);
+  else delete collection[row];
+  vars[name] = collection;
  }
  function readUIInput() {
   let pads = [];
@@ -377,6 +442,7 @@ function createRuntime(project, canvas, hooks={}) {
   input.update(keys,pressed,pads);
   uiActivations.clear();
   uiChanges.clear();
+  uiListSelections.clear();
   const resumed = canGoBack() && input.pressed('menu-back');
   if (resumed) showUI(layout.uiScreen);
   if (uiScreen?.navigation !== false) overlay?.navigate(input);
@@ -384,6 +450,7 @@ function createRuntime(project, canvas, hooks={}) {
    if (screen !== uiScreen) continue;
    const item = screen?.items.find(control => control.id === id && isUIInteractive(control));
    if (!item || item.disabled) continue;
+   if (item.kind === 'data-list') { selectDataListRow(item,value); continue; }
    if (isUISetting(item)) {
     if (uiSettingValue(item,vars,uiValues) === value) continue;
     if (Object.hasOwn(vars,item.variable)) vars[item.variable] = value;
@@ -392,8 +459,9 @@ function createRuntime(project, canvas, hooks={}) {
     continue;
    }
    uiActivations.add(id);
-   if (item.command === 'layout' && p.layouts.some(candidate => candidate.id === item.target)) nextLayout = item.target;
-   if (item.command === 'restart') nextLayout = layout.id;
+   if (item.command === 'layout' && p.layouts.some(candidate => candidate.id === item.target)) queueLayout(item.target);
+   if (item.command === 'restart') queueLayout(layout.id);
+   if (item.command === 'continue') loadCheckpoint(item.target);
    if (item.command === 'show') showUI(item.target);
    if (item.command === 'restore') showUI(layout.uiScreen);
   }
@@ -409,12 +477,18 @@ function createRuntime(project, canvas, hooks={}) {
  const norm=gameKeyName;
  const keyDown=k=>keys.has(norm(k));
  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
- const functions={dataField:(row,name)=>studioData.rows.get(row)?.[name]??0,tileHasTag, tileColumn, tileRow, audioLevel:bus=>audio.volume(bus), min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
+ const randomRange = (value,a=1,b) => b === undefined ? value*a : a + value*(b-a);
+ const functions={dataField:(row,name)=>studioData.rows.get(row)?.[name]??0,tileHasTag, tileColumn, tileRow, audioLevel:bus=>audio.volume(bus), min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a,b)=>randomRange(Math.random(),a,b),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
  const expressionEnvironment = { read: resolve, functions };
  const expressionCache = new Map();
- function interpretExpression(text, context) {
-  if (!expressionCache.has(text)) expressionCache.set(text, bindEventExpression(parseEventExpression(text), expressionEnvironment));
-  return expressionCache.get(text)(context);
+ const watchCache = debugHooks && new Map();
+ const watchEnvironment = debugHooks && {
+  read:resolve,
+  functions:{...functions,random:(a,b)=>randomRange(crypto.getRandomValues(new Uint32Array(1))[0] / 2**32,a,b)},
+ };
+ function interpretExpression(text, context, cache = expressionCache, environment = expressionEnvironment) {
+  if (!cache.has(text)) cache.set(text, bindEventExpression(parseEventExpression(text), environment));
+  return cache.get(text)(context);
  }
 
  const rowPlans = new WeakMap();
@@ -443,7 +517,7 @@ function createRuntime(project, canvas, hooks={}) {
  }
  for (const source of eventSheetSources(p)) registerGroups(source.events);
  const groupActive=id=>groupOverrides.get(id)??groupDefaults.get(id)??false;
- function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(c.parameters&&Object.hasOwn(c.parameters,a))v=c.parameters[a];else if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Data'&&Object.hasOwn(studioData.root,rest[0]))v=studioData.root;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse'){v=mouse;if(rest.length&&Object.hasOwn(mouseAliases,rest[0]))rest[0]=mouseAliases[rest[0]];}else if(a==='Camera'&&rest.length&&!Object.hasOwn(byName,a))v=camera.view;else if(a==='Enums'&&rest.length&&Object.keys(enums).length)v=enums;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
+ function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(c.parameters&&Object.hasOwn(c.parameters,a))v=c.parameters[a];else if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Data'&&Object.hasOwn(studioData.root,rest[0]))v=studioData.root;else if(a==='Self'||a==='self'){v=c.watchInstance??c.owner?.object??c.target;if(c.watch&&!v)throw Error('Select a live instance for Self.');}else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse'){v=mouse;if(rest.length&&Object.hasOwn(mouseAliases,rest[0]))rest[0]=mouseAliases[rest[0]];}else if(a==='Camera'&&rest.length&&!Object.hasOwn(byName,a))v=camera.view;else if(a==='Enums'&&rest.length&&Object.keys(enums).length)v=enums;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
  const attachedSheets = [...behaviorPlans.values()].flatMap(plan => plan.custom.map(({ sheet }) => sheet));
  function containsCollision(events) {
   return events.some(event => event.conditions.some(condition => condition.kind === 'collision') ||
@@ -533,17 +607,51 @@ function createRuntime(project, canvas, hooks={}) {
   if (kind === 'navigating') return state?.status === 'moving';
   return Boolean(state?.eventFrame === frame && state.status === (kind === 'navArrived' ? 'arrived' : 'failed'));
  }
- function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);if(typeof c.kind==='string'&&c.kind.startsWith('extension/'))return extensionCondition(c,a,s,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'groupActive':ok=groupActive(a.group);break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'inputDown':ok=input.down(a.input);break;case 'inputPressed':ok=input.pressed(a.input);break;case 'uiActivated':ok=uiActivations.has(a.control);break;case 'uiChanged':ok=uiChanges.has(a.control);break;case 'uiOpened':ok=Boolean(openedUI&&openedUI===a.screen);break;case 'mousePressed':ok=a.button==null||a.button===''?mouse.clicked:mouseButtons.has(Number(a.button));break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'animationState':case 'animationStateEntered':{const matches=pick(s,id,owner).filter(o=>{const active=matchAnimationState(o,animationPlans.get(o.type),a.state)&&(c.kind==='animationState'||o.animationState.signalFrame===frame);return active!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||(state.clip.name===a.clip||state.clip.id===a.clip)))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function* action(a,s,index,owner,depth,parents,breakpoint){if(breakpoint)yield breakpoint;let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);if(typeof a.kind==='string'&&a.kind.startsWith('extension/')){extensionAction(a,q,s,index,owner);return}switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGroupActive':if(groupDefaults.has(q.group))groupOverrides.set(q.group,q.active!=='false');break;case 'setDataRow':if(studioData.rows.has(q.row))vars[q.name]=q.row;break;case 'setGlobalFromData':if(studioData.fields.has(q.field))vars[q.name]=studioData.fields.get(q.field);break;case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'showUI':showUI(q.screen);break;case 'restoreUI':showUI(layout.uiScreen);break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':audio.tone(Number(ev(q.frequency)),Number(ev(q.duration)));break;case 'audioVolume':audio.setVolume('master',Number(ev(q.value)));break;case 'playAudio':audio.play(q.clip,{bus:q.bus,tag:q.tag?.trim(),volume:Number(ev(q.volume??'100')),loop:Boolean(ev(q.loop??'false'))});break;case 'stopAudio':audio.stop(q.tag?.trim());break;case 'fadeAudio':audio.fade(q.tag?.trim(),Number(ev(q.value)),Number(ev(q.duration)));break;case 'audioBusVolume':audio.setVolume(q.bus,Number(ev(q.value)),Number(ev(q.duration??'0')));break;case 'fullscreen':setGameFullscreen(q.name);break;default:for(let o of pick(s,id,owner)){switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'aimAt':{const dx=Number(ev(q.x,o))-o.x-o.w/2,dy=Number(ev(q.y,o))-o.y-o.h/2;if(Math.hypot(dx,dy)>0)o.angle=Math.atan2(dy,dx)*180/Math.PI;break}case 'spawn':if(types[q.child])objects.push(make(types[q.child],{x:Number(ev(q.x,o)),y:Number(ev(q.y,o))}));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'setAnimationState':{if(types[o.type].animator?.machine?.enabled===false)break;const state=resolveAnimationState(animationPlans.get(o.type),q.state);if(state)enterAnimationState(o,state,frame,'Event sheet',Boolean(ev(q.restart??'false',o)));else report(Error('Unknown animation state '+q.state+' for '+types[o.type].name));break}case 'playClip':if(playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o))))useManualAnimation(o,'Play clip');break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;useManualAnimation(o,'Stop clip');}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}useManualAnimation(o,'Set animation frame');o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':case 'add':writeInstanceProperty(o,q.property,ev(q.value,o),a.kind==='add');break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);if(typeof c.kind==='string'&&c.kind.startsWith('extension/'))return extensionCondition(c,a,s,index,owner);switch(c.kind){case 'start':ok=first;break;case 'checkpointExists':ok=Boolean(saves.read(a.slot));break;case 'checkpointLoaded':ok=first&&loadedCheckpoint;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'groupActive':ok=groupActive(a.group);break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'inputDown':ok=input.down(a.input);break;case 'inputPressed':ok=input.pressed(a.input);break;case 'uiActivated':ok=uiActivations.has(a.control);break;
+ case 'uiListSelected':ok=uiListSelections.has(a.control)&&(!a.row||uiListSelections.get(a.control)===a.row);break;
+ case 'inventoryHas':{const amount=Number(val(a.quantity??'1'));ok=Number.isSafeInteger(amount)&&amount>0&&inventoryCount(vars[a.name],a.row)>=amount;break}
+ case 'uiChanged':ok=uiChanges.has(a.control);break;case 'uiOpened':ok=Boolean(openedUI&&openedUI===a.screen);break;case 'mousePressed':ok=a.button==null||a.button===''?mouse.clicked:mouseButtons.has(Number(a.button));break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'animationState':case 'animationStateEntered':{const matches=pick(s,id,owner).filter(o=>{const active=matchAnimationState(o,animationPlans.get(o.type),a.state)&&(c.kind==='animationState'||o.animationState.signalFrame===frame);return active!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||(state.clip.name===a.clip||state.clip.id===a.clip)))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
+ function* action(a,s,index,owner,depth,parents,breakpoint){if(breakpoint)yield breakpoint;let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);if(typeof a.kind==='string'&&a.kind.startsWith('extension/')){extensionAction(a,q,s,index,owner);return}switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGroupActive':if(groupDefaults.has(q.group))groupOverrides.set(q.group,q.active!=='false');break;case 'setDataRow':if(studioData.rows.has(q.row))vars[q.name]=q.row;break;case 'setGlobalFromData':if(studioData.fields.has(q.field))vars[q.name]=studioData.fields.get(q.field);break;case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'saveCheckpoint': {
+  let spawn;
+  if (q.spawn) {
+   const object = pick(s,q.spawn,owner)[0];
+   const id = object && placedIds.get(object);
+   if (typeof id !== 'string' || !Number.isFinite(object.x) || !Number.isFinite(object.y)) {
+    throw Error('Choose an object placed in this scene as the checkpoint spawn.');
+   }
+   spawn = { id,type:object.type,x:object.x,y:object.y };
+  }
+  saves.write(q.slot,layout,vars,q.globals,spawn);
+  refreshContinueButtons(q.slot);
+  break;
+ }case 'loadCheckpoint':loadCheckpoint(q.slot);break;case 'clearCheckpoint':saves.remove(q.slot);refreshContinueButtons(q.slot);break;case 'layout':queueLayout(q.layout);break;case 'restart':queueLayout(layout.id);break;case 'showUI':showUI(q.screen);break;case 'restoreUI':showUI(layout.uiScreen);break;
+ case 'inventoryAdd':
+ case 'inventoryRemove':
+ case 'inventoryClear':changeInventory(a.kind,q.name,q.row,a.kind==='inventoryClear'?0:Number(ev(q.quantity??'1')));break;
+ case 'openDialogue':{
+  const screen = uiScreens.get(q.screen);
+  if (!Object.hasOwn(vars,q.name) || !studioData.rows.has(q.row) || !screen?.items.some(item =>
+   item.kind === 'data-list' && item.mode === 'choices' && item.variable === q.name)) {
+   throw Error('Choose a dialogue row, screen, and the global bound to its choices.');
+  }
+  vars[q.name] = q.row;
+  showUI(q.screen);
+  break;
+ }
+ case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':audio.tone(Number(ev(q.frequency)),Number(ev(q.duration)));break;case 'audioVolume':audio.setVolume('master',Number(ev(q.value)));break;case 'playAudio':audio.play(q.clip,{bus:q.bus,tag:q.tag?.trim(),volume:Number(ev(q.volume??'100')),loop:Boolean(ev(q.loop??'false'))});break;case 'stopAudio':audio.stop(q.tag?.trim());break;case 'fadeAudio':audio.fade(q.tag?.trim(),Number(ev(q.value)),Number(ev(q.duration)));break;case 'audioBusVolume':audio.setVolume(q.bus,Number(ev(q.value)),Number(ev(q.duration??'0')));break;case 'fullscreen':setGameFullscreen(q.name);break;default:for(let o of pick(s,id,owner)){switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'aimAt':{const dx=Number(ev(q.x,o))-o.x-o.w/2,dy=Number(ev(q.y,o))-o.y-o.h/2;if(Math.hypot(dx,dy)>0)o.angle=Math.atan2(dy,dx)*180/Math.PI;break}case 'spawn':if(types[q.child])objects.push(make(types[q.child],{x:Number(ev(q.x,o)),y:Number(ev(q.y,o))}));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'setAnimationState':{if(types[o.type].animator?.machine?.enabled===false)break;const state=resolveAnimationState(animationPlans.get(o.type),q.state);if(state)enterAnimationState(o,state,frame,'Event sheet',Boolean(ev(q.restart??'false',o)));else report(Error('Unknown animation state '+q.state+' for '+types[o.type].name));break}case 'playClip':if(playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o))))useManualAnimation(o,'Play clip');break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;useManualAnimation(o,'Stop clip');}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}useManualAnimation(o,'Set animation frame');o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':case 'add':writeInstanceProperty(o,q.property,ev(q.value,o),a.kind==='add');break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
  function executionPoint(event, source, scope, owner, depth, parents, conditions, index, actionIndex, breakpoint = false) {
   const target = event.actions[actionIndex ?? 0]?.args?.object;
   const selected = new Set(Object.values(scope).flat().filter(object => !object.dead).map(object => object.id));
   if (target) for (const object of pick(scope, target, owner)) selected.add(object.id);
   if (owner && !owner.object.dead) selected.add(owner.object.id);
-  return {
+  const point = {
    source, id: event.id, depth, parents, conditions: conditions ? [...conditions] : [], index, actionIndex, breakpoint,
    selected: [...selected], calls: callStack.map(entry => entry.name), callDepth: callStack.length, frame,
   };
+  if (breakpoint || actionIndex !== null) {
+   debugScopes.set(point,{scope,owner,index,target:target ? pick(scope,target,owner)[0] : undefined});
+  }
+  return point;
  }
 
  function mergeSelections(matches) {
@@ -648,6 +756,7 @@ function createRuntime(project, canvas, hooks={}) {
    const allowed=!uiOnly || event.conditions.some(condition=>!condition.invert && (
     condition.kind==='uiActivated' && uiActivations.has(condition.args?.control) ||
     condition.kind==='uiChanged' && uiChanges.has(condition.args?.control) ||
+    condition.kind==='uiListSelected' && uiListSelections.has(condition.args?.control) ||
     condition.kind==='uiOpened' && openedUI===condition.args?.screen));
    const matched=allowed && (yield* executeEvent(event,scope,index,owner,source,depth,parents,traversal));
    previous=event.otherwise?(previous || matched):matched;
@@ -842,17 +951,18 @@ function createRuntime(project, canvas, hooks={}) {
    objects = objects.filter(object => !object.dead);
    previousPairs = layoutPairs;
    first = false;
-  } else if (!nextLayout && (uiActivations.size || uiChanges.size || openedUI)) {
+  } else if (!nextLayout && (uiActivations.size || uiChanges.size || uiListSelections.size || openedUI)) {
    yield* runLayoutEvents(true);
    if (profile) { profile.events = clock() - phaseStarted; phaseStarted = clock(); }
   }
   pressed.clear();
   mouse.clicked = false;
   mouseButtons.clear();
-  if (nextLayout) enter(nextLayout);
+  if (nextLayout) enter(nextLayout,nextCheckpoint);
   else if (!menuPaused) { camera.place(dt, objects); updateMouseWorld(); }
   if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
   draw();
+  updateInventorySelections();
   overlay?.update(vars);
   if (profile) { profile.rendering = clock() - phaseStarted; profile.total = clock() - started; }
   hooks.tick?.({
@@ -922,6 +1032,45 @@ function createRuntime(project, canvas, hooks={}) {
   if (mode === 'frame' && !paused) { pause(true); debugHooks.onPause?.(null); }
  }
 
+ function evaluateWatch(expression,instanceId) {
+  if (!debugHooks) throw Error('Watches are available in Preview.');
+  const stopped = debugScopes.get(stopPoint);
+  const instance = objects.find(object=>object.id===instanceId && !object.dead);
+  const context = { scope:{}, ...stopped, watch:true, watchInstance:instance };
+  return interpretExpression(expression,context,watchCache,watchEnvironment);
+ }
+
+ function editPreviewInstance(id,edits) {
+  if (!debugHooks || !running || !paused) throw Error('Pause Preview to edit an instance.');
+  const object = objects.find(object=>object.id===id && !object.dead);
+  if (!object) throw Error('This instance is no longer live.');
+  const finiteJSON = value => typeof value === 'number' ? Number.isFinite(value)
+   : !value || typeof value !== 'object' || Object.values(value).every(finiteJSON);
+  for (const {group,key,value} of edits) {
+   if (group === 'variable') {
+    if (!Object.hasOwn(object.vars,key) || !finiteJSON(value)) throw Error('Invalid value for ' + key + '.');
+    continue;
+   }
+   const field = Object.hasOwn(previewInstanceFields,key) && previewInstanceFields[key];
+   if (group !== 'property' || !field || (key === 'text' && types[object.type].kind !== 'text')) {
+    throw Error('This property cannot be edited.');
+   }
+   if (typeof value !== (field.type ?? 'number') || (!field.type &&
+       (!Number.isFinite(value) || (field.positive && value <= 0) || value < field.min || value > field.max))) {
+    throw Error('Invalid value for ' + field.label + '.');
+   }
+  }
+  for (const {group,key,value} of edits) {
+   if (group === 'variable') object.vars[key] = structuredClone(value);
+   else writeInstanceProperty(object,key,value,false);
+  }
+  if (edits.some(({group,key})=>group === 'property' && ['x','y','w','h'].includes(key))) {
+   camera.place(0,objects,true);
+   updateMouseWorld();
+  }
+  draw();
+ }
+
  function loop(now) {
   if (!running) return;
   const delta = last ? (now - last) / 1000 : 1 / 60;
@@ -980,7 +1129,7 @@ function createRuntime(project, canvas, hooks={}) {
    }
   }
  }
- function reset(id) {
+ function reset(id = p.activeLayout) {
   discardFrame();
   audio.reset();
   frame = 0;
@@ -988,9 +1137,10 @@ function createRuntime(project, canvas, hooks={}) {
   mouseButtons.clear();
   vars = Object.fromEntries(p.globals.map(v => [v.name,structuredClone(v.value)]));
   if (Object.hasOwn(vars,fullscreenVariable)) vars[fullscreenVariable] = fullscreenState;
-  enter(id);
+  const spawn = debugHooks && hooks.previewSpawn?.layout === id ? hooks.previewSpawn : null;
+  const selected = enter(id,null,spawn);
   draw();
-  debugHooks?.onReset?.(paused);
+  debugHooks?.onReset?.(paused,selected);
  }
 
  async function startRenderer() {
@@ -1009,7 +1159,7 @@ function createRuntime(project, canvas, hooks={}) {
    if (running) hooks.renderer?.('Canvas 2D · ' + error.message);
   }
  }
- reset(p.activeLayout);return {start(){if(running)return;running=true;if(navigator.userActivation?.isActive)audio.unlock();startRenderer();window.addEventListener('pointerdown',audio.unlock);window.addEventListener('pointerup',audio.unlock);window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);window.addEventListener('resize',fitFullscreen);document.addEventListener('fullscreenchange',syncBrowserFullscreen);unsubscribeFullscreen=nativeFullscreen?.onFullscreenChange(syncFullscreen);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);if(needsRightClick)canvas.addEventListener('contextmenu',preventGameContextMenu);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;window.removeEventListener('pointerdown',audio.unlock);window.removeEventListener('pointerup',audio.unlock);discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);window.removeEventListener('resize',fitFullscreen);document.removeEventListener('fullscreenchange',syncBrowserFullscreen);unsubscribeFullscreen?.();fullscreenRequest++;syncFullscreen(false);if(fullscreenHost&&document.fullscreenElement===fullscreenHost)document.exitFullscreen().catch(()=>{});canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);canvas.removeEventListener('contextmenu',preventGameContextMenu);window.removeEventListener('pointerup',mu);audio.dispose();renderer.close();overlay?.remove()},pause,step,reset,debugCommand,inspect:()=>{
+ reset(p.activeLayout);return {start(){if(running)return;running=true;if(navigator.userActivation?.isActive)audio.unlock();startRenderer();window.addEventListener('pointerdown',audio.unlock);window.addEventListener('pointerup',audio.unlock);window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);window.addEventListener('resize',fitFullscreen);document.addEventListener('fullscreenchange',syncBrowserFullscreen);unsubscribeFullscreen=nativeFullscreen?.onFullscreenChange(syncFullscreen);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);if(needsRightClick)canvas.addEventListener('contextmenu',preventGameContextMenu);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;window.removeEventListener('pointerdown',audio.unlock);window.removeEventListener('pointerup',audio.unlock);discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);window.removeEventListener('resize',fitFullscreen);document.removeEventListener('fullscreenchange',syncBrowserFullscreen);unsubscribeFullscreen?.();fullscreenRequest++;syncFullscreen(false);if(fullscreenHost&&document.fullscreenElement===fullscreenHost)document.exitFullscreen().catch(()=>{});canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);canvas.removeEventListener('contextmenu',preventGameContextMenu);window.removeEventListener('pointerup',mu);audio.dispose();renderer.close();overlay?.remove()},pause,step,reset,debugCommand,evaluateWatch,editPreviewInstance,inspect:()=>{
  const sound = audio.inspect();
  return {vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame,execution,ui:uiScreen?.id??'',menuPaused:Boolean(uiScreen?.pause),volume:sound.channels.master,audio:sound};
  },key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}

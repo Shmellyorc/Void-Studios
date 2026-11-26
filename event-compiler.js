@@ -1,4 +1,4 @@
-const conditionExpressions = { compare: ['expr'], filter: ['expr'], every: ['seconds'] };
+const conditionExpressions = { compare: ['expr'], filter: ['expr'], every: ['seconds'], inventoryHas: ['quantity'] };
 const actionExpressions = {
  return: ['value'], setLocal: ['value'], setEntry: ['key','value'], setGlobal: ['value'], addGlobal: ['value'],
  create: ['x','y'], cameraPosition: ['x','y'], cameraZoom: ['zoom'], cameraShake: ['strength','duration'],
@@ -6,6 +6,7 @@ const actionExpressions = {
  fadeAudio: ['value','duration'], audioBusVolume: ['value','duration'], emitParticles: ['count'], navigate: ['x','y','restart'],
  moveSolid: ['x','y'], aimAt:['x','y'], spawn:['x','y'], playClip: ['restart'], setAnimationState: ['restart'], animation: ['value'], damage: ['value'], heal: ['value'],
  set: ['value'], add: ['value'], position: ['x','y'], jump: ['value'], text: ['value'], instance: ['value'],
+ inventoryAdd: ['quantity'], inventoryRemove: ['quantity'],
 };
 
 function compileStudioEvents(project) {

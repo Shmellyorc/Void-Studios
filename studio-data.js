@@ -1,7 +1,7 @@
-const studioDataTypes = { text:'Text', number:'Number', boolean:'Boolean', enum:'Enum', sprite:'Sprite' };
+const studioDataTypes = { text:'Text', longText:'Long text', number:'Number', boolean:'Boolean', enum:'Enum', sprite:'Sprite', row:'Row link' };
 const dataReference = (...parts) => parts.join('/');
 const dataId = value => typeof value === 'string' && /^[\w-]+$/.test(value);
-const dataFieldDefault = type => ({number:0,boolean:false,text:'',enum:'',sprite:''})[type];
+const dataFieldDefault = type => ({number:0,boolean:false,text:'',longText:'',enum:'',sprite:'',row:''})[type];
 
 function validateProjectData(project) {
  project.dataFiles ??= [];
@@ -28,7 +28,8 @@ function validateProjectData(project) {
    for (const [id,value] of Object.entries(row.values)) {
     const column = columns.get(id);
     if (!column || typeof value !== typeof dataFieldDefault(column.type) ||
-        column.type === 'number' && !Number.isFinite(value)) throw Error('Invalid value in row ' + row.key);
+        column.type === 'number' && !Number.isFinite(value) ||
+        column.type === 'row' && value && !/^[\w-]+\/[\w-]+\/[\w-]+$/.test(value)) throw Error('Invalid value in row ' + row.key);
    }
   },'data row');
  };
@@ -37,7 +38,7 @@ function validateProjectData(project) {
 }
 
 function createStudioData(project) {
- const root = Object.create(null), rows = new Map(), fields = new Map();
+ const root = Object.create(null), tables = new Map(), rows = new Map(), fields = new Map();
  const enums = new Map((project.enums ?? []).map(item=>[item.id,item]));
  const enumIcons = new Map(), enumValues = new Set();
  for (const enumeration of enums.values()) for (const member of enumeration.values) {
@@ -49,8 +50,10 @@ function createStudioData(project) {
   const namespace = root[file.name] = Object.create(null);
   for (const table of file.tables) {
    const tableValues = namespace[table.name] = Object.create(null);
+   const tableRef = dataReference(file.id,table.id);
+   tables.set(tableRef,table);
    for (const row of table.rows) {
-    const ref = dataReference(file.id,table.id,row.id), values = tableValues[row.key] = Object.create(null);
+    const ref = dataReference(tableRef,row.id), values = tableValues[row.key] = Object.create(null);
     rows.set(ref,values);
     for (const column of table.columns) {
      let value = row.values[column.id] ?? dataFieldDefault(column.type);
@@ -61,15 +64,16 @@ function createStudioData(project) {
    }
   }
  }
- return { project,root,rows,fields,enumIcons };
+ return { project,root,tables,rows,fields,enumIcons };
 }
 
-function studioDataBoundValue(data, binding, row) {
+function studioDataBoundValue(data, binding, row, useRow = false) {
  if (!binding || !data) return undefined;
  if (typeof row === 'string' && data.rows.has(row)) {
   const parts = binding.split('/'), next = row.split('/');
   if (parts[0] === next[0] && parts[1] === next[1]) return data.fields.get(dataReference(row,parts[3]));
  }
+ if (useRow) return '';
  return data.fields.get(binding);
 }
 

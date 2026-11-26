@@ -1,7 +1,7 @@
 {
   "name": "void-studio",
   "productName": "VOID Studio",
-  "version": "0.21.0",
+  "version": "0.22.0-beta.1",
   "description": "Offline visual 2D game development for the VOID ecosystem",
   "private": true,
   "main": "desktop/main.cjs",

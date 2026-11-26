@@ -43,6 +43,27 @@ body:has(.void-ui-window-fullscreen) > :not(.void-ui-window-fullscreen):is(heade
 .studio-bitmap-caption canvas { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
 .studio-font-readable { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .void-ui-image { container-type:size; }
+.void-ui-label[data-text-align="left"] { justify-content:start; text-align:left; }
+.void-ui-label[data-text-align="right"] { justify-content:end; text-align:right; }
+.void-ui-data-list {
+ display:flex; flex-direction:column; align-items:stretch; justify-content:start; gap:.32em;
+ overflow:auto; overscroll-behavior:contain; pointer-events:auto; scrollbar-width:thin;
+}
+.void-ui-data-list button {
+ flex:none; display:flex; align-items:center; gap:.65em; min-height:2.15em;
+ width:100%; padding:.42em .65em; border:1px solid #ffffff25; border-radius:.32em;
+ font:inherit; color:inherit; background:var(--void-ui-color); text-align:start; cursor:pointer;
+}
+.void-ui-data-list button:hover { background:var(--void-ui-hover,var(--void-ui-color)); filter:brightness(1.15); }
+.void-ui-data-list button[aria-pressed="true"] { border-color:#93dfc7; }
+.void-ui-data-list button:focus-visible, .void-ui-data-list button.void-ui-focused {
+ outline:2px solid var(--void-ui-focus,#affde0); outline-offset:-3px;
+}
+.void-ui-data-list button:disabled { cursor:default; opacity:.6; }
+.void-ui-list-label { flex:1; min-width:0; overflow-wrap:anywhere; }
+.void-ui-list-art { display:grid; place-items:center; container-type:size; width:1.45em; height:1.45em; flex:none; }
+.void-ui-list-count { font-variant-numeric:tabular-nums; color:#c5e8dd; }
+.void-ui-list-empty { padding:.65em; color:inherit; opacity:.7; text-align:start; }
 .studio-data-portrait {
  position:relative; display:block; flex:none; overflow:hidden;
  width:min(100cqw,calc(100cqh * var(--data-aspect,1))); aspect-ratio:var(--data-aspect,1);
@@ -57,6 +78,7 @@ body:has(.void-ui-window-fullscreen) > :not(.void-ui-window-fullscreen):is(heade
 .ui-editor-stage.void-ui-paused { background: #152233; }
 .ui-editor-stage .void-ui-control { pointer-events: auto; cursor: move; touch-action: none; }
 .ui-editor-stage .void-ui-setting > * { pointer-events: none; }
+.ui-editor-stage .void-ui-data-list > * { pointer-events:none; }
 .ui-editor-stage .void-ui-control.ui-editor-locked { pointer-events: none; }
 .ui-editor-stage .ui-editor-selected { outline: 2px solid #6cd5ff; outline-offset: -2px; }
 .ui-selection-frame, .ui-selection-marquee {

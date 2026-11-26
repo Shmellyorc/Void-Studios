@@ -4,6 +4,8 @@ const selectedUIControls = () => (currentUIScreen()?.items ?? []).filter(item =>
 const uiScreenOptions = (project = P) => (project.uiScreens ?? []).map(screen => [screen.id,screen.name]);
 const uiControlOptions = (project = P) => (project.uiScreens ?? []).flatMap(screen => screen.items
  .filter(item => item.kind === 'button').map(item => [item.id,screen.name + ' · ' + (item.text || 'Button')]));
+const uiDataListOptions = (project = P) => (project.uiScreens ?? []).flatMap(screen => screen.items
+ .filter(item => item.kind === 'data-list').map(item => [item.id,screen.name + ' · ' + (item.text || 'Data list')]));
 const uiSettingOptions = (project = P) => (project.uiScreens ?? []).flatMap(screen => screen.items
  .filter(isUISetting).map(item => [item.id,screen.name + ' · ' + (item.text || item.kind)]));
 const uiInputOptions = (project = P) => projectInputActions(project).map(input => [input.id,input.name]);
@@ -20,7 +22,8 @@ const uiEdgeLabels = {
 const uiResizeHandles = { nw:[-1,-1], n:[0,-1], ne:[1,-1], e:[1,0], se:[1,1], s:[0,1], sw:[-1,1], w:[-1,0] };
 const uiViewportPresets = [['layout','Layout'],['narrow','Narrow (4:3)',4/3],['wide','Widescreen (16:9)',16/9],
  ['ultrawide','Ultrawide (21:9)',21/9],['portrait','Portrait (9:16)',9/16]];
-const uiControlKinds = [['button','Button'],['label','Label'],['image','Image'],['bar','Bar'],['slider','Slider'],['toggle','Toggle'],['dropdown','Dropdown']];
+const uiControlKinds = [['button','Button'],['label','Label'],['image','Image'],['bar','Bar'],['slider','Slider'],['toggle','Toggle'],
+ ['dropdown','Dropdown'],['data-list','Data List']];
 const uiLayoutModes = [['free','Free placement'],['column','Vertical stack'],['row','Horizontal stack']];
 const uiCrossOptions = [['start','Start'],['center','Center'],['end','End'],['stretch','Stretch']];
 
@@ -106,6 +109,8 @@ function uiControlPreset(kind, text, props = {}) {
   ...(kind === 'bar' ? { variable: '', max: 100, background: '#3cb58f' } : {}),
   ...(kind === 'image' ? { w:96,h:96 } : {}),
   ...(kind === 'panel' ? { w:320,h:180,layout:'column',padding:12,gap:8,align:'stretch',fit:true,background:'#213548' } : {}),
+  ...(kind === 'data-list' ? { w:250,h:160,order:0,mode:'inventory',table:'',variable:'',labelColumn:'',iconColumn:'',
+   fromColumn:'',nextColumn:'',selectionVariable:'',emptyText:'No items' } : {}),
   ...(uiSettingsKinds.includes(kind) ? { w:260,variable:'',order:0 } : {}),
   ...(kind === 'slider' ? { min:0,max:100,step:5 } : {}),
   ...(kind === 'dropdown' ? { options:['First','Second'] } : {}),
@@ -196,7 +201,8 @@ function renderUIWorkspace() {
  $('#ui-hierarchy').innerHTML = uiHierarchyMarkup(model,entries);
  $('#ui-tools').innerHTML = button('+ Screen','ui:newScreen','primary') + (screen ?
   button('+ Panel','ui:add:panel') + button('+ Button','ui:add:button') + button('+ Label','ui:add:label') +
-  button('+ Bar','ui:add:bar') + button('+ Image','ui:add:image') + select('Add setting','ui-add-setting','',[['','Choose…'],...uiControlKinds.filter(([id]) => uiSettingsKinds.includes(id))]) +
+  button('+ Bar','ui:add:bar') + button('+ Image','ui:add:image') +
+  select('More controls','ui-add-setting','',[['','Choose…'],...uiControlKinds.filter(([id]) => uiSettingsKinds.includes(id) || id === 'data-list')]) +
   uiAlignmentMenu(entries) : '') +
   '<div class="spacer"></div>' + select('Viewport','ui-viewport',uiWorkspace.viewport,uiViewportPresets) +
   button('Styles','ui:styles') + button('Input Actions','ui:inputs') + button('Load Menu Demo','ui:demo');
@@ -225,7 +231,8 @@ function uiInspectorControl(item,model) {
  const fieldFor = (label,key,type) => field(label,'ui-item.'+key,item[key],type);
  const checkFor = (label,key) => checkbox(label,'ui-item.'+key,item[key]);
  const target = item.command === 'layout' ? select('Layout','ui-item.target',item.target,P.layouts.map(layout => [layout.id,layout.name])) :
-  item.command === 'show' ? select('Screen','ui-item.target',item.target,uiStartOptions()) : '';
+  item.command === 'show' ? select('Screen','ui-item.target',item.target,uiStartOptions()) :
+  item.command === 'continue' ? select('Save slot','ui-item.target',item.target,checkpointSlotOptions) : '';
  const stacked = model.byId.get(item.id).stacked;
  const panel = item.kind === 'panel';
  const fields = [...(stacked ? [] : [['Offset X','x'],['Offset Y','y']]),['Width','w'],['Height','h']];
@@ -236,7 +243,8 @@ function uiInspectorControl(item,model) {
  const dataOptions = canBind ? dataFieldOptions(image) : [];
  const binding = canBind && (dataOptions.length || item.dataField)
   ? select('Data field','ui-item.dataField',item.dataField ?? '',[['','None'],...dataOptionsWithMissing(dataOptions,item.dataField)]) +
-   (item.dataField ? select('Row from global','ui-item.dataRowVariable',item.dataRowVariable ?? '',[['','Use the selected field’s row'],...globals.slice(1)]) : '') : '';
+   (item.dataField ? select('Row from global','ui-item.dataRowVariable',item.dataRowVariable ?? '',[['','Use the selected field’s row'],...globals.slice(1)]) : '') +
+   (item.dataField && item.dataRowVariable ? checkFor('Blank when no row is selected','emptyWithoutRow') : '') : '';
  const typography = panel || image ? '' : select('Font','ui-item.font',item.font??'',
   [['','Inherit'],['system','System'],['serif','Serif'],['mono','Monospace'],...studioFontOptions()]) +
   button('Manage Fonts…','font:open');
@@ -244,12 +252,15 @@ function uiInspectorControl(item,model) {
   select('Parent panel','ui-item.parent',item.parent ?? '',uiParents(item,model)) + style +
   (stacked ? '<p class="muted">Positioned by parent stack.</p>' : select('Anchor','ui-item.anchor',item.anchor,Object.entries(uiAnchorLabels))) +
   '<div class="two">' + fields.map(([label,key]) => fieldFor(label,key,'number')).join('') +
-  typography + (!panel && !image && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
+  typography + (item.kind === 'label' ? select('Text alignment','ui-item.textAlign',item.textAlign ?? '',
+   [['','Center'],['left','Left'],['right','Right']]) : '') +
+  (!panel && !image && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
   (!item.style && !image && item.kind !== 'label' ? fieldFor('Fill color','background','color') : '') + '</div>' +
   (isUIInteractive(item) ? fieldFor('Focus order','order','number') + checkFor('Disabled','disabled') : '') +
   (item.kind === 'button' ? select('When activated','ui-item.command',item.command,
-   [['event','Trigger visual event'],['layout','Go to layout'],['restart','Restart layout'],['show','Show UI screen'],['restore','Restore layout UI']]) + target :
+   [['event','Trigger visual event'],['layout','Go to layout'],['restart','Restart layout'],['continue','Continue from checkpoint'],['show','Show UI screen'],['restore','Restore layout UI']]) + target :
    item.kind === 'bar' ? select('Value','ui-item.variable',item.variable,globals) + fieldFor('Maximum','max','number') :
+   item.kind === 'data-list' ? uiDataListFields(item,globals) :
    panel ? select('Layout','ui-item.layout',item.layout,uiLayoutModes) +
     (item.layout === 'free' ? '' : select('Cross-axis alignment','ui-item.align',item.align,uiCrossOptions) + fieldFor('Gap','gap','number')) +
     fieldFor('Padding','padding','number') + checkFor('Fit available width','fit') + checkFor('Transparent','transparent') :
@@ -257,6 +268,21 @@ function uiInspectorControl(item,model) {
     (item.kind === 'slider' ? ['min','max','step'].map(key => fieldFor(({min:'Minimum',max:'Maximum',step:'Step'})[key],key,'number')).join('') :
      item.kind === 'dropdown' ? `<label>Choices (one per line)<textarea data-field="ui-item.options" rows="4">${esc(item.options.join('\n'))}</textarea></label>` : '') : '') +
   uiSelectionActions('') + '</div>';
+}
+
+function uiDataListFields(item,globals) {
+ const [fileId,tableId] = item.table.split('/');
+ const columns = P.dataFiles?.find(file=>file.id === fileId)?.tables.find(table=>table.id === tableId)?.columns ?? [];
+ const choose = (label,key,options) => select(label,'ui-item.'+key,item[key],
+  [['','None'],...dataOptionsWithMissing(options,item[key])]);
+ const column = (label,key,types) => choose(label,key,columns.filter(column=>types.includes(column.type)).map(column=>[column.id,column.name]));
+ const choices = item.mode === 'choices';
+ return select('Source','ui-item.mode',item.mode,dataListModes) + choose('Data table','table',dataTableOptions()) +
+  choose(choices ? 'Dialogue row global' : 'Inventory global','variable',globals.slice(1)) +
+  column('Label column','labelColumn',['text']) +
+  (choices ? column('From dialogue row','fromColumn',['row']) + column('Next dialogue row','nextColumn',['row']) :
+   column('Icon column','iconColumn',['sprite','enum']) + choose('Selected row global','selectionVariable',globals.slice(1))) +
+  field('Empty message','ui-item.emptyText',item.emptyText);
 }
 
 function uiSelectionActions(suffix) {
@@ -589,13 +615,16 @@ function setupUIWorkspace() {
   }
   change(() => {
    item[key] = value;
-   if (key === 'command') item.target = value === 'layout' ? L().id : '';
+   if (key === 'command') item.target = value === 'layout' ? L().id : value === 'continue' ? 'autosave' : '';
+  if (item.kind === 'data-list' && key === 'table') {
+   Object.assign(item,{labelColumn:'',iconColumn:'',fromColumn:'',nextColumn:''});
+  }
   });
  });
  $('#ui-tools').addEventListener('change',event => {
   const {id,value} = event.target;
   if (id === 'ui-align') { alignUIControls(value); $('#ui-align')?.focus(); }
-  if (event.target.dataset.field === 'ui-add-setting' && uiSettingsKinds.includes(value)) studioUIAction('add',value);
+  if (event.target.dataset.field === 'ui-add-setting' && (uiSettingsKinds.includes(value) || value === 'data-list')) studioUIAction('add',value);
   if (event.target.dataset.field === 'ui-viewport') {
    uiWorkspace.viewport = value;
    renderUIWorkspace();
@@ -625,6 +654,7 @@ function setupStudioSettings() {
 
 function menuDemo() {
  const project = demo();
+ project.gameSaveId = 'shard-runner-demo';
  const title = { id:'title', name:'Title', width:640,height:360,background:'#142535',instances:[],events:[],uiScreen:'title-menu' };
  const arena = project.layouts.find(layout => layout.id === 'arena');
  arena.instances = arena.instances.filter(object => object.type !== 'hud');
@@ -640,9 +670,10 @@ function menuDemo() {
  const sliders = mixer.map(([,variable,label],order) => option('slider',label,{variable,order}));
  const fullscreen = option('toggle','Fullscreen',{variable:'Fullscreen',order:4});
  const tone = option('dropdown','Test tone',{variable:'Tone',options:['Low','High'],order:5});
- const playButton = buttonAt('Play',12,'event','arena',0);
- const controlsButton = buttonAt('Controls',66,'show','controls-menu',1);
- const optionsButton = buttonAt('Options',120,'show','options-menu',2);
+ const playButton = buttonAt('Play',-4,'event','arena',0);
+ const continueButton = buttonAt('Continue',43,'continue','autosave',1);
+ const controlsButton = buttonAt('Controls',90,'show','controls-menu',2);
+ const optionsButton = buttonAt('Options',137,'show','options-menu',3);
  const audio = (clip,args = {}) => block('playAudio',{clip,bus:'',volume:'100',loop:'false',...args});
  const menuSound = () => audio('menu-confirm');
  const track = 'music';
@@ -650,6 +681,25 @@ function menuDemo() {
  project.audioClips = demoAudioClips();
  project.audioMixer = Object.fromEntries(mixer.map(([bus,,,value]) => [bus,value]));
  project.globals.push(...mixer.map(([,name,,value]) => ({name,value})),{name:'Fullscreen',value:false},{name:'Tone',value:'Low'});
+ const shards = arena.instances.filter(object => object.type === 'coin');
+ shards.forEach((object,index) => { object.vars = { ShardIndex:index }; });
+ arena.instances.find(object => object.type === 'player').id = 'shard-runner-player';
+ project.types.push({
+  id:'checkpoint-beacon',name:'CheckpointBeacon',kind:'sprite',shape:'circle',color:'#62d6ed',
+  w:24,h:24,behaviors:[],vars:{},
+ });
+ arena.instances.push({ id:'arena-beacon',type:'checkpoint-beacon',x:140,y:108,w:24,h:24,angle:0,opacity:1 });
+ project.globals.push({name:'CollectedShards',value:shards.map(() => false)},{name:'CheckpointStatus',value:'Touch the blue beacon to save'});
+ const freshStart = arena.events.find(row => row.conditions.some(condition => condition.kind === 'start'));
+ freshStart.conditions.push({ ...block('checkpointLoaded'),invert:true });
+ freshStart.actions.push(
+  ...shards.map((_,index) => block('setEntry',{name:'CollectedShards',key:String(index),value:'false'})),
+  block('setGlobal',{name:'CheckpointStatus',value:'"Touch the blue beacon to save"'}),
+ );
+ const restored = event([block('checkpointLoaded')],[
+  block('setGlobal',{name:'CheckpointStatus',value:'"Checkpoint restored"'}),
+ ],[event([block('filter',{object:'coin',expr:'at(CollectedShards, Self.ShardIndex)'})],[block('destroy',{object:'coin'})])]);
+ arena.events.unshift(restored);
  title.events.push(
   event([block('start')],[block('stopAudio',{tag:track}),
    ...mixer.map(([bus,name]) => block('setGlobal',{name,value:'round(audioLevel("' + bus + '"))'}))]),
@@ -660,25 +710,32 @@ function menuDemo() {
   event([block('uiActivated',{control:playButton.id})],[menuSound(),block('layout',{layout:'arena'})]),
   ...[controlsButton,optionsButton].map(button => event([block('uiActivated',{control:button.id})],[menuSound()]))
  );
- for (const row of arena.events) if (row.actions.some(action => action.kind === 'addGlobal' && action.args.name === 'Score')) {
-  row.actions = row.actions.map(action => action.kind === 'sound' ? audio('shard-pickup') : action);
- }
+ const collectShard = arena.events.find(row => row.actions.some(action => action.kind === 'addGlobal' && action.args.name === 'Score'));
+ collectShard.actions.unshift(block('setEntry',{name:'CollectedShards',key:'Coin.ShardIndex',value:'true'}));
+ collectShard.actions = collectShard.actions.map(action => action.kind === 'sound' ? audio('shard-pickup') : action);
  arena.events.push(
+  event([block('collision',{object:'player',other:'checkpoint-beacon'}),{ ...block('checkpointLoaded'),invert:true }],[
+   block('saveCheckpoint',{slot:'autosave',spawn:'player',globals:'Score, Health, CollectedShards, Inventory'}),
+   block('setGlobal',{name:'CheckpointStatus',value:'"Checkpoint saved"'}),
+   menuSound(),
+  ]),
   event([block('start')],[audio('arena-loop',{loop:'true',tag:track})]),
   event([block('uiOpened',{screen:'pause-menu'})],[menuSound(),block('fadeAudio',{tag:track,value:'25',duration:'0.35'})]),
   event([block('uiOpened',{screen:'game-hud'})],[block('fadeAudio',{tag:track,value:'100',duration:'0.45'})]),
  );
  project.uiScreens = [
   { id:'title-menu',name:'Main Menu',items:[
-   label('Shard Runner',-100,42),
-   label('Collect the shards and reach the gate.',-54,17),
-   playButton,controlsButton,optionsButton,
+   label('Shard Runner',-117,42),
+   label('Collect the shards and reach the gate.',-71,17),
+   playButton,continueButton,controlsButton,optionsButton,
   ] },
   { id:'controls-menu',name:'Controls',items:[
    label('Controls',-100,38),
    label('Move with the arrow keys or D-pad.',-38,18),
    label('Pause with Escape or Start.',-4,18),
-   buttonAt('Back',62,'show','title-menu',0),
+   label('Talk to Ada with E. Open your pack with I.',25,16),
+   label('Touch the blue beacon to save progress.',52,16),
+   buttonAt('Back',103,'show','title-menu',0),
   ] },
   { id:'options-menu',name:'Options',items:[panel,
    option('label','Options',{h:36,style:'',size:28}),...sliders,fullscreen,tone,
@@ -687,6 +744,7 @@ function menuDemo() {
   { id:'game-hud',name:'Gameplay HUD',navigation:false,items:[
    uiControlPreset('label','SHARDS {Score} / 6',{ anchor:'top-left',x:16,y:10,w:145,h:40,size:18 }),
    uiControlPreset('bar','HEALTH {Health} / 3',{ anchor:'top-right',x:-16,y:12,w:150,h:34,size:15,variable:'Health',max:3 }),
+   uiControlPreset('label','{CheckpointStatus}',{ anchor:'bottom-center',y:-12,w:272,h:26,size:15 }),
    uiControlPreset('button','Pause',{ anchor:'bottom-right',x:-16,y:-12,w:86,h:34,size:15,command:'show',target:'pause-menu' }),
   ] },
   { id:'pause-menu',name:'Pause Menu',pause:true,items:[
@@ -723,5 +781,6 @@ function menuDemo() {
  project.name = 'Shard Runner — Menu Demo';
  project.activeLayout = title.id;
  project.buildSettings = { title:'Shard Runner',version:'1.0.0',layout:title.id,icon:'' };
+ addShardRunnerData(project,arena,{freshStart,restored,collectShard});
  return project;
 }

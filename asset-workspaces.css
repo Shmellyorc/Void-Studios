@@ -254,6 +254,7 @@
 .data-grid th button:hover { background:#334658; }
 .data-grid td label { display:block; margin:0; font-size:0; }
 .data-grid td :is(input,select) { font-size:13px; margin:0; min-width:100px; }
+.data-grid td textarea { font-size:13px; margin:0; min-width:230px; resize:vertical; }
 .data-grid td input[type=checkbox] { min-width:0; width:auto; }
 .data-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 .data-enum-list { display:grid; gap:5px; max-width:680px; }
