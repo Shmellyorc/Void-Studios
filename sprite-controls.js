@@ -126,8 +126,9 @@ class SpritePalette extends LitElement {
  static styles = [controls,css`
   :host { display:block; padding:7px 8px 10px; }
   .tools { margin-bottom:7px; }
-  details[open] .options { position:absolute; top:29px; left:0; z-index:2; width:max-content; max-width:170px; }
-  details:last-child .options { left:auto; right:0; }
+  .tools:has(> details) { position:relative; }
+  .tools > details { position:static; }
+  details[open] .options { position:absolute; top:29px; left:0; z-index:2; width:190px; max-width:100%; }
   .swatches { display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--swatch-size,22px),1fr)); gap:3px; }
   .swatch,.grip { position:relative; min-width:0; width:100%; aspect-ratio:1; border-radius:3px; padding:0; }
   .swatch:not(.checker) { background:var(--color); }
