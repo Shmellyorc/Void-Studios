@@ -1,11 +1,85 @@
-const uiWorkspace = { project: null, screen: null, item: null, drag: null };
+const uiWorkspace = { project: null, screen: null, selection: new Set(), gesture: null };
 const currentUIScreen = () => P.uiScreens?.find(screen => screen.id === uiWorkspace.screen);
-const currentUIControl = () => currentUIScreen()?.items.find(item => item.id === uiWorkspace.item);
+const selectedUIControls = () => (currentUIScreen()?.items ?? []).filter(item => uiWorkspace.selection.has(item.id));
 const uiScreenOptions = (project = P) => (project.uiScreens ?? []).map(screen => [screen.id,screen.name]);
 const uiControlOptions = (project = P) => (project.uiScreens ?? []).flatMap(screen => screen.items
  .filter(item => item.kind === 'button').map(item => [item.id,screen.name + ' · ' + (item.text || 'Button')]));
 const uiInputOptions = (project = P) => projectInputActions(project).map(input => [input.id,input.name]);
 const uiStartOptions = () => [['','None'],...uiScreenOptions()];
+const uiAnchorLabels = {
+ 'top-left':'Top Left', 'top-center':'Top Center', 'top-right':'Top Right',
+ 'center-left':'Center Left', center:'Center', 'center-right':'Center Right',
+ 'bottom-left':'Bottom Left', 'bottom-center':'Bottom Center', 'bottom-right':'Bottom Right',
+};
+const uiEdgeLabels = {
+ left:'Align Left Edges', horizontal:'Align Horizontal Centers', right:'Align Right Edges',
+ top:'Align Top Edges', vertical:'Align Vertical Centers', bottom:'Align Bottom Edges',
+};
+const uiResizeHandles = { nw:[-1,-1], n:[0,-1], ne:[1,-1], e:[1,0], se:[1,1], s:[0,1], sw:[-1,1], w:[-1,0] };
+
+function uiControlBounds(item, viewport) {
+ const [x,y] = uiAnchors[item.anchor];
+ const left = (viewport.width-item.w)*x + item.x;
+ const top = (viewport.height-item.h)*y + item.y;
+ return { left,top,right:left+item.w,bottom:top+item.h };
+}
+
+function uiBoundsGroup(boxes) {
+ return boxes.reduce((a,b) => ({
+  left:Math.min(a.left,b.left), top:Math.min(a.top,b.top),
+  right:Math.max(a.right,b.right), bottom:Math.max(a.bottom,b.bottom),
+ }));
+}
+
+function setUIControlBounds(item, box, viewport, anchor = item.anchor) {
+ const [x,y] = uiAnchors[anchor], w = box.right-box.left, h = box.bottom-box.top;
+ Object.assign(item,{ anchor,w,h,x:box.left-(viewport.width-w)*x,y:box.top-(viewport.height-h)*y });
+}
+
+function offsetUIBounds(box, x, y) {
+ return { left:box.left+x, right:box.right+x, top:box.top+y, bottom:box.bottom+y };
+}
+
+function positionUIBounds(node, box) {
+ const px = value => 'calc(' + value + ' * var(--void-ui-unit))';
+ node.style.left = px(box.left);
+ node.style.top = px(box.top);
+ node.style.width = px(box.right-box.left);
+ node.style.height = px(box.bottom-box.top);
+}
+
+function alignUIControls(command) {
+ const items = selectedUIControls();
+ if (!items.length || !command) return;
+ const viewport = createSceneCamera(L()).view;
+ const boxes = items.map(item => uiControlBounds(item,viewport)), group = uiBoundsGroup(boxes);
+ const [target, alignment] = command.split(':');
+ if (target === 'viewport' && Object.hasOwn(uiAnchors,alignment)) {
+  const [x,y] = uiAnchors[alignment];
+  const dx = (viewport.width-(group.right-group.left))*x-group.left;
+  const dy = (viewport.height-(group.bottom-group.top))*y-group.top;
+  change(() => items.forEach((item,i) => setUIControlBounds(item,offsetUIBounds(boxes[i],dx,dy),viewport,alignment)));
+ } else if (items.length > 1 && target === 'selection' && Object.hasOwn(uiEdgeLabels,alignment)) {
+  change(() => items.forEach((item,i) => {
+   const box = boxes[i];
+   const x = ({ left:group.left-box.left, right:group.right-box.right,
+    horizontal:(group.left+group.right-box.left-box.right)/2 })[alignment] ?? 0;
+   const y = ({ top:group.top-box.top, bottom:group.bottom-box.bottom,
+    vertical:(group.top+group.bottom-box.top-box.bottom)/2 })[alignment] ?? 0;
+   setUIControlBounds(item,offsetUIBounds(box,x,y),viewport);
+  }));
+ }
+}
+
+function uiAlignmentMenu(count) {
+ const options = (group,labels) => Object.entries(labels).map(([value,label]) =>
+  `<option value="${group}:${value}">${label}</option>`).join('');
+ return `<select id="ui-align" aria-label="Align selected controls" ${count ? '' : 'disabled'}>
+  <option value="">Align</option>
+  <optgroup label="Place in viewport">${options('viewport',uiAnchorLabels)}</optgroup>
+  <optgroup label="Align within selection" ${count > 1 ? '' : 'disabled'}>${options('selection',uiEdgeLabels)}</optgroup>
+ </select>`;
+}
 
 function uiControlPreset(kind, text, props = {}) {
  return {
@@ -18,35 +92,56 @@ function uiControlPreset(kind, text, props = {}) {
 }
 
 function paintUIWorkspace() {
- const stage = $('#ui-stage'), { width,height } = createSceneCamera(L()).view;
+ const stage = $('#ui-stage'), viewport = createSceneCamera(L()).view, { width,height } = viewport;
  stage.style.aspectRatio = width + ' / ' + height;
  stage.style.setProperty('--void-ui-unit',stage.clientWidth / width + 'px');
- $('#ui-dimensions').textContent = width + ' × ' + height + ' viewport';
+ $('#ui-dimensions').textContent = width + ' × ' + height + ' viewport · Shift-click or drag a box to select';
  const screen = currentUIScreen();
  stage.classList.toggle('void-ui-paused',Boolean(screen?.pause));
  const vars = Object.fromEntries(P.globals.map(variable => [variable.name,variable.value]));
  stage.replaceChildren(...(screen?.items ?? []).map(item => {
   const node = createUIControl(item,vars);
   node.tabIndex = -1;
-  node.classList.toggle('ui-editor-selected',item.id === uiWorkspace.item);
+  node.classList.toggle('ui-editor-selected',uiWorkspace.selection.has(item.id));
   return node;
  }));
+ const items = selectedUIControls();
+ if (!items.length) return;
+ const frame = document.createElement('div');
+ frame.className = 'ui-selection-frame' + (items.length > 1 ? ' ui-selection-group' : '');
+ frame.setAttribute('aria-hidden','true');
+ positionUIBounds(frame, uiBoundsGroup(items.map(item => uiControlBounds(item,viewport))));
+ if (items.length === 1) {
+  for (const [direction,[x,y]] of Object.entries(uiResizeHandles)) {
+   const handle = document.createElement('span');
+   handle.className = 'ui-resize-handle';
+   handle.dataset.uiResize = direction;
+   handle.style.left = `clamp(5px,${(x+1)*50}%,100% - 5px)`;
+   handle.style.top = `clamp(5px,${(y+1)*50}%,100% - 5px)`;
+   frame.append(handle);
+  }
+ }
+ stage.append(frame);
 }
 
 function renderUIWorkspace() {
  if (uiWorkspace.project !== P) {
   uiWorkspace.project = P;
   uiWorkspace.screen = L().uiScreen || P.uiScreens?.[0]?.id;
-  uiWorkspace.item = null;
+  uiWorkspace.selection.clear();
+  uiWorkspace.gesture = null;
  }
- if (!currentUIScreen()) uiWorkspace.screen = P.uiScreens?.[0]?.id;
- const screen = currentUIScreen(), item = currentUIControl();
+ if (!currentUIScreen()) {
+  uiWorkspace.screen = P.uiScreens?.[0]?.id;
+  uiWorkspace.selection.clear();
+ }
+ const screen = currentUIScreen(), selection = selectedUIControls(), item = selection[0];
  $('#ui-layouts').innerHTML = P.layouts.map(layout =>
   `<button class="tree prefab-tree ${layout.id === L().id ? 'selected' : ''}" data-act="ui:layout:${esc(layout.id)}">${esc(layout.name)}</button>`).join('');
  $('#ui-screens').innerHTML = uiScreenOptions().map(([id,name]) =>
   `<button class="tree prefab-tree ${id === screen?.id ? 'selected' : ''}" data-act="ui:screen:${esc(id)}">${esc(name)}</button>`).join('');
  $('#ui-tools').innerHTML = button('+ Screen','ui:newScreen','primary') + (screen ?
-  button('+ Button','ui:add:button') + button('+ Label','ui:add:label') + button('+ Bar','ui:add:bar') : '') +
+  button('+ Button','ui:add:button') + button('+ Label','ui:add:label') + button('+ Bar','ui:add:bar') + uiAlignmentMenu(selection.length) : '') +
   '<div class="spacer"></div>' + button('Input Actions','ui:inputs') + button('Load Menu Demo','ui:demo');
  $('#ui-empty').hidden = Boolean(screen);
  $('#ui-board').hidden = !screen;
@@ -56,24 +151,28 @@ function renderUIWorkspace() {
    field('Name','ui-screen.name',screen.name) + checkbox('Pause gameplay','ui-screen.pause',screen.pause) +
    checkbox('Keyboard and controller navigation','ui-screen.navigation',screen.navigation !== false) +
    button('Delete screen','ui:deleteScreen','danger ghost') + '</div>' : '') +
-  (item ? uiInspectorControl(item) : '');
+  (selection.length === 1 ? uiInspectorControl(item) : selection.length > 1 ? `<div class="prop-group">
+   <h4>${selection.length} CONTROLS SELECTED</h4>${uiSelectionActions(' selection')}</div>` : '');
  paintUIWorkspace();
 }
 
 function uiInspectorControl(item) {
  const fieldFor = (label,key,type) => field(label,'ui-item.'+key,item[key],type);
- const options = entries => entries.map(key => [key,key.replace(/-/g,' ').replace(/^./,char => char.toUpperCase())]);
  const target = item.command === 'layout' ? select('Layout','ui-item.target',item.target,P.layouts.map(layout => [layout.id,layout.name])) :
   item.command === 'show' ? select('Screen','ui-item.target',item.target,uiStartOptions()) : '';
  return '<div class="prop-group"><h4>' + item.kind.toUpperCase() + '</h4>' + fieldFor('Text','text') +
-  select('Anchor','ui-item.anchor',item.anchor,options(Object.keys(uiAnchors))) + '<div class="two">' +
+  select('Anchor','ui-item.anchor',item.anchor,Object.entries(uiAnchorLabels)) + '<div class="two">' +
   [['Offset X','x'],['Offset Y','y'],['Width','w'],['Height','h'],['Font size','size']].map(([label,key]) => fieldFor(label,key,'number')).join('') +
   fieldFor('Text color','color','color') + (item.kind !== 'label' ? fieldFor('Fill color','background','color') : '') + '</div>' +
   (item.kind === 'button' ? fieldFor('Focus order','order','number') + select('When activated','ui-item.command',item.command,
    [['event','Trigger visual event'],['layout','Go to layout'],['restart','Restart layout'],['show','Show UI screen'],['restore','Restore layout UI']]) + target :
    item.kind === 'bar' ? select('Value','ui-item.variable',item.variable,[['','Choose a global variable'],...P.globals.map(variable => [variable.name,variable.name])]) +
     fieldFor('Maximum','max','number') : '') +
-  `<div class="two">${button('Duplicate','ui:duplicate')}${button('Delete','ui:deleteItem','danger')}</div></div>`;
+  uiSelectionActions('') + '</div>';
+}
+
+function uiSelectionActions(suffix) {
+ return `<div class="two">${button('Duplicate'+suffix,'ui:duplicate')}${button('Delete'+suffix,'ui:deleteItem','danger')}</div>`;
 }
 
 function showInputActions() {
@@ -109,7 +208,7 @@ function editInputAction(id) {
 }
 
 function studioUIAction(action, value) {
- const screen = currentUIScreen(), item = currentUIControl();
+ const screen = currentUIScreen(), selection = selectedUIControls();
  if (action === 'inputs') return showInputActions();
  if (action === 'editInput') return editInputAction(value);
  if (action === 'deleteInput') {
@@ -126,13 +225,13 @@ function studioUIAction(action, value) {
  }
  if (action === 'screen') {
   uiWorkspace.screen = value;
-  uiWorkspace.item = null;
+  uiWorkspace.selection.clear();
   return renderUIWorkspace();
  }
  if (action === 'layout') {
   P.activeLayout = value;
   if (L().uiScreen) uiWorkspace.screen = L().uiScreen;
-  uiWorkspace.item = null;
+  uiWorkspace.selection.clear();
   selected = null;
   return render();
  }
@@ -140,7 +239,7 @@ function studioUIAction(action, value) {
   const name = values.name.trim().slice(0,100);
   if (!name) throw Error('Enter a screen name');
   const next = { id:uid(),name,items:[] };
-  change(() => { (P.uiScreens ??= []).push(next); uiWorkspace.screen = next.id; uiWorkspace.item = null; });
+  change(() => { (P.uiScreens ??= []).push(next); uiWorkspace.screen = next.id; uiWorkspace.selection.clear(); });
  });
  if (!screen) return;
  switch (action) {
@@ -149,13 +248,17 @@ function studioUIAction(action, value) {
   if (value === 'button') next.order = screen.items.filter(item => item.kind === 'button').length;
   if (value === 'bar') next.variable = P.globals[0]?.name ?? '';
   screen.items.push(next);
-  uiWorkspace.item = next.id;
+  uiWorkspace.selection = new Set([next.id]);
  }); break;
- case 'duplicate': if (item) change(() => {
-  const next = { ...item,id:uid(),x:item.x+16,y:item.y+16 };
-  screen.items.push(next); uiWorkspace.item = next.id;
+ case 'duplicate': if (selection.length) change(() => {
+  const copies = selection.map(item => ({ ...item,id:uid(),x:item.x+16,y:item.y+16 }));
+  screen.items.push(...copies);
+  uiWorkspace.selection = new Set(copies.map(item => item.id));
  }); break;
- case 'deleteItem': if (item) change(() => { screen.items = screen.items.filter(control => control !== item); uiWorkspace.item = null; }); break;
+ case 'deleteItem': if (selection.length) change(() => {
+  screen.items = screen.items.filter(item => !uiWorkspace.selection.has(item.id));
+  uiWorkspace.selection.clear();
+ }); break;
  case 'deleteScreen':
   if (confirm('Delete ' + screen.name + '?')) change(() => {
    P.uiScreens = P.uiScreens.filter(candidate => candidate !== screen);
@@ -163,6 +266,93 @@ function studioUIAction(action, value) {
   });
   break;
  }
+}
+
+function resizeUIBounds(box, direction, x, y) {
+ const [horizontal,vertical] = uiResizeHandles[direction];
+ return {
+  left:horizontal < 0 ? Math.min(box.right-1,box.left+x) : box.left,
+  right:horizontal > 0 ? Math.max(box.left+1,box.right+x) : box.right,
+  top:vertical < 0 ? Math.min(box.bottom-1,box.top+y) : box.top,
+  bottom:vertical > 0 ? Math.max(box.top+1,box.bottom+y) : box.bottom,
+ };
+}
+
+function setupUISelection(stage) {
+ const point = (event, viewport) => {
+  const surface = stage.getBoundingClientRect();
+  return { x:(event.clientX-surface.left)*viewport.width/surface.width, y:(event.clientY-surface.top)*viewport.height/surface.height };
+ };
+ stage.addEventListener('pointerdown',event => {
+  if (event.button !== 0 || uiWorkspace.gesture) return;
+  const id = event.target.closest('[data-ui-control]')?.dataset.uiControl;
+  const direction = event.target.closest('[data-ui-resize]')?.dataset.uiResize;
+  const viewport = createSceneCamera(L()).view, start = point(event,viewport);
+  const extend = event.shiftKey, alreadySelected = uiWorkspace.selection.has(id);
+  event.preventDefault();
+  stage.focus({ preventScroll:true });
+  if (id && extend) {
+   if (alreadySelected) uiWorkspace.selection.delete(id);
+   else uiWorkspace.selection.add(id);
+   return renderUIWorkspace();
+  }
+  if (id && !alreadySelected) uiWorkspace.selection = new Set([id]);
+  if (!id && !direction && !extend) uiWorkspace.selection.clear();
+  const items = selectedUIControls().map(item => ({ item,box:uiControlBounds(item,viewport) }));
+  if ((id || direction) && !items.length) return;
+  uiWorkspace.gesture = {
+   pointer:event.pointerId, clientX:event.clientX, clientY:event.clientY, start, viewport,
+   mode:direction ? 'resize' : id ? 'move' : 'box', items, direction,
+   collapse:id && alreadySelected && items.length > 1 ? id : null, moved:false,
+  };
+  stage.setPointerCapture(event.pointerId);
+  renderUIWorkspace();
+ });
+ stage.addEventListener('pointermove',event => {
+  const gesture = uiWorkspace.gesture;
+  if (gesture?.pointer !== event.pointerId) return;
+  if (!gesture.moved && Math.hypot(event.clientX-gesture.clientX,event.clientY-gesture.clientY) < 3) return;
+  const end = point(event,gesture.viewport);
+  if (gesture.mode === 'box') {
+   if (!gesture.moved) {
+    gesture.marquee = document.createElement('div');
+    gesture.marquee.className = 'ui-selection-marquee';
+    stage.append(gesture.marquee);
+   }
+   gesture.moved = true;
+   gesture.box = { left:Math.min(gesture.start.x,end.x), top:Math.min(gesture.start.y,end.y),
+    right:Math.max(gesture.start.x,end.x), bottom:Math.max(gesture.start.y,end.y) };
+   positionUIBounds(gesture.marquee,gesture.box);
+   return;
+  }
+  if (!gesture.moved) checkpoint();
+  gesture.moved = true;
+  const dx = Math.round(end.x-gesture.start.x), dy = Math.round(end.y-gesture.start.y);
+  const bounds = gesture.items.map(({ item,box }) => {
+   const next = gesture.mode === 'resize' ? resizeUIBounds(box,gesture.direction,dx,dy) : offsetUIBounds(box,dx,dy);
+   setUIControlBounds(item,next,gesture.viewport);
+   positionUIControl(stage.querySelector('[data-ui-control="' + item.id + '"]'),item);
+   return next;
+  });
+  positionUIBounds(stage.querySelector('.ui-selection-frame'),uiBoundsGroup(bounds));
+ });
+ for (const name of ['pointerup','pointercancel','lostpointercapture']) stage.addEventListener(name,event => {
+  const gesture = uiWorkspace.gesture;
+  if (gesture?.pointer !== event.pointerId) return;
+  uiWorkspace.gesture = null;
+  if (name === 'pointerup') {
+   if (gesture.mode === 'box' && gesture.box) {
+    for (const item of currentUIScreen()?.items ?? []) {
+     const itemBox = uiControlBounds(item,gesture.viewport), box = gesture.box;
+     if (itemBox.left < box.right && itemBox.right > box.left && itemBox.top < box.bottom && itemBox.bottom > box.top) {
+      uiWorkspace.selection.add(item.id);
+     }
+    }
+   } else if (!gesture.moved && gesture.collapse) uiWorkspace.selection = new Set([gesture.collapse]);
+  }
+  if (gesture.moved && gesture.mode !== 'box') render();
+  else renderUIWorkspace();
+ });
 }
 
 function setupUIWorkspace() {
@@ -173,7 +363,8 @@ function setupUIWorkspace() {
  $('#ui-inspector').addEventListener('change',event => {
   const input = event.target;
   const [group,key] = (input.dataset.field ?? '').split('.');
-  const screen = currentUIScreen(), item = currentUIControl();
+  const screen = currentUIScreen(), items = selectedUIControls();
+  const item = items.length === 1 ? items[0] : null;
   if (group === 'ui-start') return change(() => { L().uiScreen = input.value; });
   if (group === 'ui-screen' && screen) {
    const value = key === 'name' ? input.value.trim().slice(0,100) : input.checked;
@@ -189,35 +380,12 @@ function setupUIWorkspace() {
    if (key === 'command') item.target = value === 'layout' ? L().id : '';
   });
  });
- stage.addEventListener('pointerdown',event => {
-  if (event.button !== 0) return;
-  uiWorkspace.item = event.target.closest('[data-ui-control]')?.dataset.uiControl;
-  const item = currentUIControl();
-  if (item) {
-   const scale = stage.clientWidth / createSceneCamera(L()).view.width;
-   uiWorkspace.drag = { item,scale,x:event.clientX,y:event.clientY,oldX:item.x,oldY:item.y,saved:false };
-   stage.setPointerCapture(event.pointerId);
-  }
-  renderUIWorkspace();
+ $('#ui-tools').addEventListener('change',event => {
+  if (event.target.id !== 'ui-align') return;
+  alignUIControls(event.target.value);
+  $('#ui-align')?.focus();
  });
- stage.addEventListener('pointermove',event => {
-  const drag = uiWorkspace.drag;
-  if (!drag) return;
-  const x = event.clientX-drag.x,y = event.clientY-drag.y;
-  if (!drag.saved) {
-   if (Math.hypot(x,y) < 3) return;
-   checkpoint();
-   drag.saved = true;
-  }
-  drag.item.x = Math.round(drag.oldX+x/drag.scale);
-  drag.item.y = Math.round(drag.oldY+y/drag.scale);
-  positionUIControl(stage.querySelector('[data-ui-control="' + drag.item.id + '"]'),drag.item);
- });
- for (const name of ['pointerup','pointercancel','lostpointercapture']) stage.addEventListener(name,() => {
-  if (!uiWorkspace.drag) return;
-  uiWorkspace.drag = null;
-  render();
- });
+ setupUISelection(stage);
 }
 
 function setupStudioSettings() {

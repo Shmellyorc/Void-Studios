@@ -190,7 +190,11 @@ variable. Use `set` to change `visible` or `text`.
 ## Menus, HUDs, and input
 
 Open **UI** to create a screen and add buttons, labels, or bars. Drag controls
-on the viewport or edit their anchor, offset, size, and colors in the inspector.
+on the viewport and drag their edge or corner handles to resize them. Shift-click
+controls or drag a selection box from empty space to select several. **Align**
+can place a selection anywhere in the viewport as a group, or line up the edges
+and centers of selected controls. The inspector also has anchor, offset, size,
+and color fields for a single control.
 Set **Starting UI** for each layout. Layouts can share screens, and a screen can
 pause gameplay while its controls are active.
 

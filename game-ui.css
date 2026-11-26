@@ -25,3 +25,18 @@ button.void-ui-button:hover { filter: brightness(1.2); background: var(--void-ui
 .ui-editor-stage.void-ui-paused { background: #152233; }
 .ui-editor-stage .void-ui-control { pointer-events: auto; cursor: move; touch-action: none; }
 .ui-editor-stage .ui-editor-selected { outline: 2px solid #6cd5ff; outline-offset: -2px; }
+.ui-selection-frame, .ui-selection-marquee {
+ position: absolute; z-index: 3; pointer-events: none; box-sizing: border-box;
+}
+.ui-selection-group { outline: 1px dashed #b4e9ff; outline-offset: -1px; }
+.ui-selection-marquee { border: 1px dashed #93ddff; background: #6cd5ff26; }
+.ui-resize-handle {
+ position: absolute; width: 10px; height: 10px; box-sizing: border-box;
+ transform: translate(-50%,-50%); border: 1px solid #15354a; border-radius: 2px;
+ box-shadow: 0 0 0 1px #26495d; background: #aee6ff; pointer-events: auto; touch-action: none;
+}
+.ui-resize-handle:hover { background: #fff; }
+.ui-resize-handle[data-ui-resize="n"], .ui-resize-handle[data-ui-resize="s"] { cursor: ns-resize; }
+.ui-resize-handle[data-ui-resize="e"], .ui-resize-handle[data-ui-resize="w"] { cursor: ew-resize; }
+.ui-resize-handle[data-ui-resize="nw"], .ui-resize-handle[data-ui-resize="se"] { cursor: nwse-resize; }
+.ui-resize-handle[data-ui-resize="ne"], .ui-resize-handle[data-ui-resize="sw"] { cursor: nesw-resize; }
