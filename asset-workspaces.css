@@ -33,3 +33,10 @@
 .prefab-tree { width: 100%; border-radius: 0; text-align: left; }
 #prefab-preview { display: block; width: 100%; height: auto; margin: 8px 0; background: #111c29; }
 #extension-manifest { display: block; width: 100%; min-height: 240px; margin-top: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--text); font: 13px monospace; tab-size: 2; resize: vertical; }
+
+#export-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.export-icon-row { display: flex; gap: 10px; align-items: end; margin-bottom: 8px; }
+.export-icon-row label { flex: 1; min-width: 0; margin: 0; }
+#export-icon-preview { object-fit: contain; border-radius: 6px; background: var(--bg); }
+#export-status { min-height: 1.4em; overflow-wrap: anywhere; }
+#export-status.export-error { color: #ffc0c8; }

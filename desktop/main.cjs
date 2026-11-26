@@ -1,9 +1,69 @@
-const { app, BrowserWindow, protocol, session } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, utilityProcess } = require('electron');
 const { readFile } = require('node:fs/promises');
 const path = require('node:path');
 
 const origin = 'void-studio://app';
 const entry = `${origin}/index.html`;
+const buildTool = app.isPackaged
+  ? path.join(process.resourcesPath,'build-tools','game-build.cjs')
+  : path.join(__dirname,'game-build.cjs');
+const buildOutputs = new WeakMap();
+let exporting = false;
+
+function editorContents(event) {
+  if (event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== entry) throw Error('Game export is available from the editor window.');
+  return event.sender;
+}
+
+function runGameBuild(contents, request) {
+  return new Promise((resolve,reject) => {
+    const job = utilityProcess.fork(buildTool,[],{ serviceName: 'VOID Game Builder' });
+    job.once('exit',code => reject(Error('The game builder exited (' + code + ').')));
+    job.on('message',result => {
+      if (result.progress && !contents.isDestroyed()) contents.send('game-export:progress',result.progress);
+      if (result.done || result.error) {
+        if (result.error) reject(Error(result.error));
+        else resolve();
+        job.kill();
+      }
+    });
+    job.postMessage(request);
+  });
+}
+
+ipcMain.handle('game-export:host',event => {
+  editorContents(event);
+  return { platform: process.platform, arch: process.arch };
+});
+
+ipcMain.handle('game-export:build',async (event, input, html) => {
+  const contents = editorContents(event);
+  if (exporting) return { error: 'A desktop export is already running.' };
+  exporting = true;
+  buildOutputs.delete(contents);
+  try {
+    const { gameBuildSettings, gameArchiveName } = require(buildTool);
+    const settings = gameBuildSettings(input);
+    if (typeof html !== 'string' || !html.startsWith('<!doctype html>')) throw Error('The game has no HTML to package.');
+    const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(contents), {
+      title: 'Save desktop game',
+      defaultPath: path.join(app.getPath('downloads'),gameArchiveName(settings)),
+      filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const destination = result.filePath;
+    if (path.extname(destination).toLowerCase() !== '.zip') throw Error('Choose a filename ending in .zip.');
+    await runGameBuild(contents,{ input: settings, html, destination, electronVersion: process.versions.electron });
+    buildOutputs.set(contents,destination);
+    return { path: destination };
+  } catch (error) { return { error: error.message }; }
+  finally { exporting = false; }
+});
+
+ipcMain.handle('game-export:reveal',event => {
+  const artifact = buildOutputs.get(editorContents(event));
+  if (artifact) shell.showItemInFolder(artifact);
+});
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'void-studio', privileges: { standard: true, secure: true } },
@@ -15,6 +75,7 @@ function openWindow() {
     height: 900,
     show: false,
     webPreferences: {
+      preload: path.join(__dirname,'export-preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

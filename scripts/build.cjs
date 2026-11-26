@@ -27,6 +27,7 @@ const html = source('shell.html')
   .replace('/*EVENT_COMPILER*/', () => source('event-compiler.js'))
   .replace('/*COMPONENT_EDITOR*/', () => source('component-editor.js'))
   .replace('/*PROJECT_FILE*/', () => source('project-file.js'))
+  .replace('/*GAME_EXPORT*/', () => source('game-export.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });

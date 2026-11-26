@@ -1,7 +1,7 @@
 {
   "name": "void-studio",
   "productName": "VOID Studio",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Offline visual 2D game development for the VOID ecosystem",
   "private": true,
   "main": "desktop/main.cjs",
@@ -19,5 +19,9 @@
     "@electron-forge/maker-zip": "8.0.1",
     "electron": "45.5.0",
     "pixi.js": "8.16.0"
+  },
+  "dependencies": {
+    "@electron/packager": "20.3.0",
+    "yazl": "3.3.1"
   }
 }

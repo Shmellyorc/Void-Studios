@@ -12,7 +12,7 @@ Install Node.js 24 and run `npm ci`. Then choose how to launch the editor.
 - **Desktop** — Run `npm start` to open the same editor in Electron.
 
 Use **Play** to preview a layout, **Save project** to download a `.void` file, and
-**Export HTML** to create a standalone game. Preview and export bundle PixiJS
+**Export Game** to create a standalone game. Preview and export bundle PixiJS
 locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailable.
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
@@ -187,7 +187,23 @@ and `add` operations in order on each picked object. Actions can write
 `x`, `y`, `w`, `h`, `angle`, `opacity`, `vx`, and `vy`, or an instance
 variable. Use `set` to change `visible` or `text`.
 
-## Package a desktop app
+## Export a game
+
+Open **Export Game** to set the game title, version, icon, and startup layout.
+**Save settings** stores these choices in the project. The startup layout
+applies to the exported game. **Preview** starts from the layout you are editing.
+
+- **Web (HTML)** creates one self-contained file that runs offline. This target
+  works in both the browser editor and the desktop app.
+- **Windows, macOS, and Linux** create portable ZIPs from the desktop editor.
+  Choose the target and its architecture. After the build, **Show in folder**
+  opens the ZIP's location. Unzip the package before launching the game.
+
+The first desktop build for a target may download its Electron runtime. Later
+builds reuse the cached runtime. Game files are packaged locally. Desktop ZIPs
+are unsigned and contain the game and its runtime.
+
+## Package from the command line
 
 Run these commands on Windows, macOS, or Linux to build for that host.
 
