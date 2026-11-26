@@ -42,6 +42,28 @@ standing on tagged tile**, or use world coordinates in expressions such as
 with **Terrain Variant** and use the **Terrain** brush to connect matching
 variants on a layer.
 
+## Sprite Editor
+
+Open **Sprite** to draw from scratch or open a local image. From Layout or
+Animator, use **Edit Sprite** to work on an object's existing artwork. The
+editor supports stacked layers with visibility, locking, ordering, and opacity,
+a reusable palette, mirrored brushes, flood fill, an eyedropper, and shape tools.
+Scroll over the artwork to zoom. Middle-drag or hold Space and drag to pan.
+
+Use rectangular or elliptical selection, freehand lasso, or a magic wand with
+color tolerance and contiguous or matching-color selection. Hold Shift to add,
+Alt to subtract, or both to intersect. The **Selection** menu includes cut,
+copy, paste, flip, and rotate. Drag with **Move Selection** to reposition the
+selected pixels. Draw a named rectangle with **Slice**, or create a slice from
+a selection. Export a slice or the whole composited image as PNG.
+
+Set up a frame grid and switch between the full sheet and a single frame. Use
+**Copy Previous** and onion skinning when drawing consecutive frames. **Link to
+Object** publishes the composite to an object, and **Open Animator** lets you
+turn the frames into clips. Edits to the linked artwork update the sheet the
+clips use. The binary project retains the editable layers, palette, and slices.
+The game export carries the published artwork.
+
 ## Animator
 
 Select an object, open **Animator**, and import a single sprite sheet. Set the

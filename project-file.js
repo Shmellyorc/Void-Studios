@@ -2,7 +2,7 @@ const projectFileMagic = Uint8Array.of(86,79,73,68,80,82,74); // VOIDPRJ
 const projectFileVersion = 2;
 const projectFileHeaderSize = 12;
 const projectMediaPrefix = /^data:(?:image|audio)\/[a-z0-9.+-]+;base64,/i;
-const projectMediaCollections = [['types','image','image'],['tilesets','image','image'],['audioClips','source','audio']];
+const projectMediaCollections = [['types','image','image'],['tilesets','image','image'],['audioClips','source','audio'],['spriteLayers','image','image']];
 
 function projectMediaBase64(bytes) {
  if (bytes.toBase64) return bytes.toBase64();

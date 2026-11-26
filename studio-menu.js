@@ -1,6 +1,6 @@
 const workspaceTabs = [
  ['layout','Layout','layouttab'], ['events','Event Sheet','eventtab'], ['tiles','Tilemap','tiletab'],
- ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'],
+ ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'], ['sprite','Sprite','spritetab'],
 ];
 const studioWorkspaceCommands = {
  layout: [
@@ -17,7 +17,7 @@ const studioWorkspaceCommands = {
    ['Raise Layer','tile:raise'],['Lower Layer','tile:lower'],['Delete Layer…','tile:deleteLayer']]],
  ],
  animate: [
-  ['Animator',[['Import Sprite Sheet…','anim:import'],['Slice Sprite Sheet…','anim:slice']]],
+  ['Animator',[['Import Sprite Sheet…','anim:import'],['Slice Sprite Sheet…','anim:slice'],['Edit Sprite','sprite:editObject']]],
   ['Clips',[['New Clip…','anim:new'],['Clip Settings…','anim:clipSettings'],['Duplicate Clip…','anim:duplicate'],null,
    ['Play / Pause Clip','anim:play'],['Rewind Clip','anim:rewind']]],
  ],
@@ -28,6 +28,13 @@ const studioWorkspaceCommands = {
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
  audio: [['Audio',[['Import Audio…','audio:import'],['Audition / Stop','audio:audition'],null,['Load Audio Demo…','audio:demo']]]],
+ sprite: [
+  ['Sprite',[['New Sprite…','sprite:new'],['Open Image…','sprite:import'],['Import Image as Layer…','sprite:importLayer'],null,
+   ['Resize Canvas…','sprite:resize'],['Frame Grid…','sprite:gridDialog'],['Link to Object…','sprite:link'],['Export PNG','sprite:export']]],
+  ['Selection',[['Select All','sprite:selectAll','Ctrl+A'],['Deselect','sprite:deselect','Ctrl+D'],['Invert Selection','sprite:invert'],null,
+   ['Cut','sprite:cut','Ctrl+X'],['Copy','sprite:copy','Ctrl+C'],['Paste','sprite:paste','Ctrl+V'],['Clear Pixels','sprite:clearPixels','Delete'],null,
+   ['Flip Horizontally','sprite:flip-x'],['Flip Vertically','sprite:flip-y'],['Rotate Clockwise','sprite:rotate'],['New Slice from Selection…','sprite:sliceSelection']]],
+ ],
 };
 const studioMenuAvailability = {
  place: () => Boolean(T(I()?.type || activeType)),
@@ -53,6 +60,12 @@ const studioMenuAvailability = {
  'ui:add:dropdown': () => Boolean(currentUIScreen()),
  'audio:import': () => !audioWorkspace.importing,
  'audio:audition': () => Boolean(selectedAudioClip()),
+ 'sprite:editObject': () => animatorType()?.kind === 'sprite',
+ 'sprite:importLayer': () => Boolean(currentSprite()),
+ 'sprite:gridDialog': () => Boolean(currentSprite()),
+ 'sprite:resize': () => Boolean(currentSprite()),
+ 'sprite:link': () => Boolean(currentSprite()),
+ 'sprite:export': () => Boolean(currentSprite()),
  'zoom:in': () => canZoomWorkspace(1),
  'zoom:out': () => canZoomWorkspace(-1),
  'zoom:reset': () => canZoomWorkspace(0),

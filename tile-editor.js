@@ -12,7 +12,7 @@ const selectedTileLayer = () => L().tilemap?.layers.find(layer => layer.id === t
 const selectedAtlas = () => P.tilesets.find(atlas => atlas.id === tileWorkspace.atlas);
 
 function validateAssetProject(project) {
- project.version = 8;
+ project.version = 9;
  project.tilesets ??= [];
  project.enums ??= [];
  if (!Array.isArray(project.tilesets) || !Array.isArray(project.enums)) throw Error('Invalid project assets');

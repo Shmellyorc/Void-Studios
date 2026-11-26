@@ -1,22 +1,24 @@
 const workspaceZoomLevels = [.25,.5,.75,1,1.5,2,3,4];
 const workspaceCanvases = new Map();
 
-function nextWorkspaceZoom(current, direction) {
- if (!direction) return 1;
- if (direction > 0) return workspaceZoomLevels.find(level => level > current) ?? current;
- return workspaceZoomLevels.findLast(level => level < current) ?? current;
+function nextWorkspaceZoom(view, direction) {
+ const current = view.get();
+ if (!direction) return view.reset();
+ if (direction > 0) return view.levels.find(level => level > current) ?? current;
+ return view.levels.findLast(level => level < current) ?? current;
 }
 
 function canZoomWorkspace(direction) {
  const view = workspaceCanvases.get(tab);
- return Boolean(view && view.surface.clientWidth && nextWorkspaceZoom(view.get(),direction) !== view.get());
+ return Boolean(view && view.surface.clientWidth && nextWorkspaceZoom(view,direction) !== view.get());
 }
 
 function zoomWorkspace(action, point) {
  const view = workspaceCanvases.get(tab);
  if (!view || !view.surface.clientWidth) return;
+ if (tab === 'sprite' && spriteWorkspace.gesture) return;
  const direction = action === 'in' ? 1 : action === 'out' ? -1 : 0;
- const next = nextWorkspaceZoom(view.get(),direction);
+ const next = nextWorkspaceZoom(view,direction);
  if (next === view.get()) return;
  const board = view.board.getBoundingClientRect();
  const x = point?.clientX ?? board.left + board.width / 2;
@@ -30,8 +32,8 @@ function zoomWorkspace(action, point) {
 }
 
 function setupWorkspaceZoom() {
- function register(workspace,surface,board,get,set) {
-  workspaceCanvases.set(workspace,{ surface,board,get,set });
+ function register(workspace,surface,board,get,set,levels=workspaceZoomLevels,reset=()=>1) {
+  workspaceCanvases.set(workspace,{ surface,board,get,set,levels,reset });
   let distance = 0, lastWheel = 0;
   surface.addEventListener('wheel',event => {
    if (tab !== workspace || event.deltaY === 0) return;
@@ -59,6 +61,10 @@ function setupWorkspaceZoom() {
   if (select) select.value = String(value);
   drawMapEditor();
  });
+ register('sprite',$('#sprite-stage'),$('#sprite-board'),() => spriteWorkspace.zoom,value => {
+  spriteWorkspace.zoom = value;
+  drawSpriteEditor();
+ },spriteZoomLevels,resetSpriteZoom);
  for (const [workspace,selector] of [['animate','#animation-preview'],['ui','#ui-stage']]) {
   const surface = $(selector);
   let zoom = 1;

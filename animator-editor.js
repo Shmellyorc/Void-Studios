@@ -31,6 +31,13 @@ function spriteAtlas(type, image) {
 
 function configureSpriteSheet(type, source) {
  const current = type.sheet;
+ const editedSprite = P.spriteDocuments?.find(doc => doc.id === type.spriteDocument);
+ if (editedSprite && !source) {
+  activeType = type.id; selected = null; tab = 'sprite';
+  selectSpriteDocument(editedSprite); render();
+  spriteGridDialog(editedSprite);
+  return;
+ }
  const oldImage = type.image ? tileImage(images, { image: type.image }) : null;
  const asset = source ?? { image: type.image, width: oldImage?.naturalWidth, height: oldImage?.naturalHeight };
  if (!asset.width || !asset.height) throw Error('Load a sprite sheet image first');
@@ -48,6 +55,7 @@ function configureSpriteSheet(type, source) {
    throw Error('Remove clip frames outside the new grid before slicing it');
   }
   change(() => {
+   if (source) delete type.spriteDocument;
    type.image = asset.image;
    type.sheet = { ...data, cols, count, fps: current?.fps ?? 0 };
    type.w = data.w; type.h = data.h;
@@ -119,7 +127,7 @@ function renderAnimator() {
   ${button('+ New Clip','anim:new','primary')}${clipList}${clip ? button('Clip Settings','anim:clipSettings') +
    button('Duplicate','anim:duplicate') + button('Delete','anim:deleteClip','danger ghost') : ''}` : '';
  $('#animation-inspector').innerHTML = type ? `<div class="panelhead">SPRITE SHEET</div><div class="pad">
-  <div class="asset-button-row">${button(type.image ? 'Replace Sheet' : 'Import Sheet','anim:import')}${type.image ? button('Slice Sheet','anim:slice') : ''}</div>
+  <div class="asset-button-row">${button(type.image ? 'Replace Sheet' : 'Import Sheet','anim:import')}${type.image ? button('Slice Sheet','anim:slice') : ''}${type.kind==='sprite' ? button('Edit Sprite','sprite:editObject') : ''}</div>
   ${type.animator?.clips.length ? select('Autoplay','anim-autoplay',type.animator.autoplay,[['','None'],...type.animator.clips.map(item => [item.id,item.name])]) : ''}
   ${hasSheet ? `<div class="palette-scroll"><canvas id="animation-sheet" aria-label="Sprite sheet frames"></canvas></div>
    ${clip ? `<div class="asset-button-row">${button('Add Selected','anim:addFrames')}${button('Add All Frames','anim:addAll')}</div><div class="muted">Shift selects a range.</div>` : ''}` :
