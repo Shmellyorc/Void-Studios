@@ -16,7 +16,7 @@ function studioArtworkLabel(reference,options) {
 function openStudioArtworkPicker(title,reference,save) {
  const initialSource = reference.split('/').slice(0,2).join('/');
  const options = studioArtworkOptions();
- const view = { art:null, images:[], index:0, zoom:1, x:0, y:0, fit:1, drag:null };
+ const view = { art:null, images:[], index:0, zoom:1, x:0, y:0, fit:1 };
  const choices = new Map();
  let request = 0;
  dialog(title,
@@ -54,78 +54,42 @@ function openStudioArtworkPicker(title,reference,save) {
  const pattern = context.createPattern(checker,'repeat');
 
  function draw() {
-  const {art,zoom,x,y,index} = view;
+  const {art,zoom,index} = view;
   if (!art) return;
-  const width = canvas.clientWidth, height = canvas.clientHeight;
-  if (!width || !height) return;
-  const density = window.devicePixelRatio || 1;
-  const pixelWidth = Math.round(width*density), pixelHeight = Math.round(height*density);
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-   canvas.width = pixelWidth;
-   canvas.height = pixelHeight;
-  }
-  context.setTransform(density,0,0,density,0,0);
-  context.clearRect(0,0,width,height);
-  context.save();
-  context.translate(x,y);
-  context.scale(zoom,zoom);
-  context.imageSmoothingEnabled = false;
-  context.fillStyle = pattern;
-  context.fillRect(0,0,art.width,art.height);
-  for (const {image,opacity} of view.images) {
-   context.globalAlpha = opacity;
-   context.drawImage(image,0,0);
-  }
-  context.globalAlpha = 1;
-  if (art.grid) {
-   const {cols,count,w,h,margin=0,spacing=0} = art.grid;
-   const left = Math.max(0,Math.floor((-x/zoom-margin)/(w+spacing)));
-   const right = Math.min(cols-1,Math.floor(((width-x)/zoom-margin)/(w+spacing)));
-   const top = Math.max(0,Math.floor((-y/zoom-margin)/(h+spacing)));
-   const bottom = Math.min(Math.ceil(count/cols)-1,Math.floor(((height-y)/zoom-margin)/(h+spacing)));
-   context.strokeStyle = '#a4bed082';
-   context.lineWidth = 1/zoom;
-   context.beginPath();
-   if (Math.min(zoom*w,zoom*h) >= 4) for (let row=top;row<=bottom;row++) {
-    for (let column=left;column<=right;column++) {
-     const frame = row*cols + column;
-     if (frame >= count) break;
-     const box = studioArtworkFrame(art,frame);
-     context.rect(box.x,box.y,box.w,box.h);
-    }
+  paintSheetViewport(canvas,view,(ctx,width,height)=>{
+   ctx.fillStyle = pattern;
+   ctx.fillRect(0,0,art.width,art.height);
+   for (const {image,opacity} of view.images) {
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(image,0,0);
    }
-   context.stroke();
+   ctx.globalAlpha = 1;
+   if (!art.grid) return;
+   ctx.strokeStyle = '#a4bed082';
+   ctx.lineWidth = 1/zoom;
+   if (Math.min(zoom*art.grid.w,zoom*art.grid.h) >= 4) {
+    ctx.beginPath();
+    visitVisibleSheetFrames(view,width,height,art.grid,(_,x,y,w,h)=>ctx.rect(x,y,w,h));
+    ctx.stroke();
+   }
    if (index >= 0) {
     const box = studioArtworkFrame(art,index);
-    context.fillStyle = '#78dfbf38';
-    context.strokeStyle = '#78dfbf';
-    context.lineWidth = 2/zoom;
-    context.fillRect(box.x,box.y,box.w,box.h);
-    context.strokeRect(box.x,box.y,box.w,box.h);
+    ctx.fillStyle = '#78dfbf38';
+    ctx.strokeStyle = '#78dfbf';
+    ctx.lineWidth = 2/zoom;
+    ctx.fillRect(box.x,box.y,box.w,box.h);
+    ctx.strokeRect(box.x,box.y,box.w,box.h);
    }
-  }
-  context.restore();
+  });
   zoomLabel.textContent = Math.round(zoom*100)+'%';
   const name = art.kind === 'tile' ? 'Tile' : 'Frame';
   selection.textContent = art.grid ? index < 0 ? 'Choose a '+name.toLowerCase() : name+' '+(index+1)+' of '+art.grid.count : '';
  }
 
+ const gestures = bindSheetViewport(canvas,view,draw,()=>Boolean(view.art));
  function fit() {
-  if (!view.art || !canvas.clientWidth || !canvas.clientHeight) return;
-  view.fit = Math.min((canvas.clientWidth-24)/view.art.width,(canvas.clientHeight-24)/view.art.height,8);
-  view.zoom = view.fit;
-  view.x = (canvas.clientWidth-view.art.width*view.zoom)/2;
-  view.y = (canvas.clientHeight-view.art.height*view.zoom)/2;
-  draw();
- }
-
- function zoomAt(factor,x,y) {
-  if (!view.art || view.drag) return;
-  const next = Math.min(Math.max(48,view.fit),Math.max(view.fit/4,view.zoom*factor));
-  const ratio = next/view.zoom;
-  view.x = x-(x-view.x)*ratio;
-  view.y = y-(y-view.y)*ratio;
-  view.zoom = next;
+  if (!view.art) return;
+  fitSheetViewport(canvas,view,view.art.width,view.art.height);
   draw();
  }
 
@@ -138,8 +102,7 @@ function openStudioArtworkPicker(title,reference,save) {
  async function load() {
   const token = ++request, source = input.value;
   view.art = null;
-  view.drag = null;
-  canvas.classList.remove('artwork-panning');
+  gestures.cancelPan();
   picker.hidden = true;
   status.hidden = !source;
   $('#dialogok').disabled = Boolean(source);
@@ -171,46 +134,11 @@ function openStudioArtworkPicker(title,reference,save) {
   fit();
  }
 
- canvas.addEventListener('wheel',event=>{
-  if (!view.art || !event.deltaY) return;
-  event.preventDefault();
-  const bounds = canvas.getBoundingClientRect();
-  const delta = event.deltaMode ? Math.sign(event.deltaY)*100 : event.deltaY;
-  zoomAt(Math.exp(-delta*.0025),event.clientX-bounds.left-canvas.clientLeft,event.clientY-bounds.top-canvas.clientTop);
- },{passive:false});
- canvas.addEventListener('pointerdown',event=>{
-  if (event.button !== 1 || !view.art) return;
-  event.preventDefault();
-  canvas.setPointerCapture(event.pointerId);
-  canvas.classList.add('artwork-panning');
-  view.drag = { pointer:event.pointerId,x:event.clientX,y:event.clientY };
- });
- canvas.addEventListener('pointermove',event=>{
-  const drag = view.drag;
-  if (!drag || drag.pointer !== event.pointerId) return;
-  view.x += event.clientX-drag.x;
-  view.y += event.clientY-drag.y;
-  drag.x = event.clientX;
-  drag.y = event.clientY;
-  draw();
- });
- for (const type of ['pointerup','pointercancel','lostpointercapture']) canvas.addEventListener(type,event=>{
-  if (view.drag?.pointer !== event.pointerId) return;
-  view.drag = null;
-  canvas.classList.remove('artwork-panning');
-  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
- });
- canvas.addEventListener('auxclick',event=>{ if (event.button === 1) event.preventDefault(); });
  canvas.addEventListener('click',event=>{
   const grid = view.art?.grid;
   if (!grid || event.button !== 0) return;
-  const bounds = canvas.getBoundingClientRect();
-  const {w,h,margin=0,spacing=0,cols,count} = grid;
-  const x = (event.clientX-bounds.left-canvas.clientLeft-view.x)/view.zoom-margin;
-  const y = (event.clientY-bounds.top-canvas.clientTop-view.y)/view.zoom-margin;
-  const column = Math.floor(x/(w+spacing)), row = Math.floor(y/(h+spacing));
-  const index = row*cols+column;
-  if (column < 0 || column >= cols || row < 0 || index >= count || x%(w+spacing) >= w || y%(h+spacing) >= h) return;
+  const index = sheetFrameAt(grid,...gestures.sheetPoint(event));
+  if (index < 0) return;
   choose(index);
   $('#dialogok').disabled = false;
  });
@@ -233,12 +161,13 @@ function openStudioArtworkPicker(title,reference,save) {
  picker.querySelector('.artwork-view-tools').addEventListener('click',event=>{
   const command = event.target.dataset.artworkZoom;
   if (command === 'fit') fit();
-  else if (command) zoomAt(command === 'in' ? 1.25 : .8,canvas.clientWidth/2,canvas.clientHeight/2);
+  else if (command) gestures.zoomAt(command === 'in' ? 1.25 : .8,canvas.clientWidth/2,canvas.clientHeight/2);
  });
  const observer = new ResizeObserver(draw);
  observer.observe(canvas);
  $('#dialog').addEventListener('close',()=>{
   request++;
+  gestures.cancelPan();
   observer.disconnect();
  },{once:true});
  input.addEventListener('change',load);

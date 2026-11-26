@@ -2,6 +2,7 @@ const tileWorkspace = {
  layout: null, layer: null, atlas: null, column: 0, row: 0, tool: 'paint',
  flipX: false, flipY: false, grid: true, enumIcons: true, zoom: 1, hover: null, stroke: null, tagFilter: '',
 };
+const tilePaletteView = {};
 const tileTools = [
  ['paint', 'Paint', 'B'], ['erase', 'Erase', 'E'], ['line', 'Line', 'L'],
  ['rectangle', 'Rectangle', 'R'], ['fill', 'Fill', 'F'], ['terrain', 'Terrain', 'T'], ['pick', 'Pick', 'I'],
@@ -220,7 +221,7 @@ function tilePaletteHtml(atlas) {
   <div class="asset-button-row">${button('Import Atlas', 'tile:import')}${button('Sample', 'tile:sample')}${atlas ? button('Settings', 'tile:atlasSettings') : ''}</div>
   ${atlas ? select('Tileset', 'tile-atlas', atlas.id, P.tilesets.map(item => [item.id,item.name])) : '<p class="muted">Import a single tilesheet image to create a palette.</p>'}
   ${atlas && tags.length ? select('Highlight tag', 'tile-filter', tileWorkspace.tagFilter, [['','None'], ...tags]) : ''}
-  ${atlas ? `<div class="palette-scroll"><canvas id="tile-palette" aria-label="Tileset atlas"></canvas></div>
+  ${atlas ? `${editorSheetMarkup('tile-palette','Tileset atlas')}
    <h4>Tile ${column}, ${row}</h4>${checkbox('Solid', 'tile-meta.solid', metadata?.solid)}
    ${tags.map(([token, name]) => checkbox(name, 'tile-tag.' + token, metadata?.tags?.includes(token))).join('')}
    ${tags.length ? button('Terrain Variant','tile:terrain') : ''}${metadata?.terrain ? `<p class="muted">${esc(tags.find(([token]) => token === metadata.terrain)?.[1])} · ${terrainEdges.filter((_, index) => metadata.edges & (1 << index)).map(([, , name]) => name).join(', ') || 'Isolated'}</p>` : ''}` : ''}
@@ -261,25 +262,18 @@ function drawTilePalette(atlas) {
  const image = tileImage(images, atlas);
  const draw = () => {
   if (!canvas.isConnected || selectedAtlas() !== atlas) return;
-  const ctx = canvas.getContext('2d');
-  const scale = Math.max(.5, Math.min(4, 210 / atlas.width));
-  canvas.width = Math.ceil(atlas.width * scale);
-  canvas.height = Math.ceil(atlas.height * scale);
-  ctx.scale(scale, scale);
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, atlas.width, atlas.height);
-  if (image.naturalWidth) ctx.drawImage(image, 0, 0);
-  const [columns, rows] = atlasSize(atlas);
-  for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
-   const area = atlasSource(atlas, column, row);
-   const data = tileMeta(atlas, column, row);
-   if (tileWorkspace.tagFilter && !data?.tags.includes(tileWorkspace.tagFilter)) {
-    ctx.fillStyle = '#08111bb8'; ctx.fillRect(...area);
-   }
-   ctx.strokeStyle = '#c5d4e64d'; ctx.lineWidth = 1 / scale; ctx.strokeRect(...area);
-  }
-  ctx.strokeStyle = '#78dfbf'; ctx.lineWidth = 2 / scale;
-  ctx.strokeRect(...atlasSource(atlas, tileWorkspace.column, tileWorkspace.row));
+  const [cols,rows] = atlasSize(atlas);
+  const grid = { w:atlas.tileWidth,h:atlas.tileHeight,margin:atlas.margin,spacing:atlas.spacing,cols,count:cols*rows };
+  const coordinates = frame=>[frame%cols,Math.floor(frame/cols)];
+  renderEditorSheet(tilePaletteView,canvas,{
+   key:atlas.id,image,width:atlas.width,height:atlas.height,grid,
+   selected:frame=>frame === tileWorkspace.row*cols+tileWorkspace.column,
+   dimmed:frame=>tileWorkspace.tagFilter && !tileMeta(atlas,...coordinates(frame))?.tags.includes(tileWorkspace.tagFilter),
+   select(frame) {
+    [tileWorkspace.column,tileWorkspace.row] = coordinates(frame);
+    renderTileEditor();
+   },
+  });
  };
  if (image.complete) draw();
  else image.addEventListener('load', draw, { once: true });
@@ -524,20 +518,6 @@ function setupTileEditor() {
   tileWorkspace.stroke = null;
   drawMapEditor(); persist();
  };
- document.addEventListener('click', event => {
-  if (event.target.id !== 'tile-palette') return;
-  const atlas = selectedAtlas();
-  if (!atlas) return;
-  const bounds = event.target.getBoundingClientRect();
-  const x = (event.clientX - bounds.left) * atlas.width / bounds.width - atlas.margin;
-  const y = (event.clientY - bounds.top) * atlas.height / bounds.height - atlas.margin;
-  const width = atlas.tileWidth + atlas.spacing, height = atlas.tileHeight + atlas.spacing;
-  const [column, row] = [Math.floor(x / width), Math.floor(y / height)];
-  const [columns, rows] = atlasSize(atlas);
-  if (column < 0 || row < 0 || column >= columns || row >= rows || x % width >= atlas.tileWidth || y % height >= atlas.tileHeight) return;
-  Object.assign(tileWorkspace, { column, row });
-  renderTileEditor();
- });
  document.addEventListener('change', event => updateTileField(event.target));
  $('#atlas-file').onchange = async event => {
   const file = event.target.files[0];

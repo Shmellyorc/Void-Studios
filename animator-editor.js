@@ -1,4 +1,5 @@
 const animator = { type: null, clip: null, frame: -1, mode:'clips', selection: new Set(), lastTile: null, position: 0, playing: false, raf: 0 };
+const animatorSheetView = {};
 const animatorType = () => T(I()?.type || activeType);
 const animatorClip = () => animatorType()?.animator?.clips.find(clip => clip.id === animator.clip);
 const loopModes = [['loop', 'Loop'], ['once', 'Once'], ['pingpong', 'Ping-pong']];
@@ -141,7 +142,7 @@ function renderAnimator() {
  $('#animation-inspector').innerHTML = type ? `<div class="panelhead">SPRITE SHEET</div><div class="pad">
   <div class="asset-button-row">${button(type.image ? 'Replace Sheet' : 'Import Sheet','anim:import')}${type.image ? button('Slice Sheet','anim:slice') : ''}${type.kind==='sprite' ? button('Edit Sprite','sprite:editObject') : ''}</div>
   ${type.animator?.clips.length ? select('Autoplay','anim-autoplay',type.animator.autoplay,[['','None'],...type.animator.clips.map(item => [item.id,item.name])]) : ''}
-  ${hasSheet ? `<div class="palette-scroll"><canvas id="animation-sheet" aria-label="Sprite sheet frames"></canvas></div>
+  ${hasSheet ? `${editorSheetMarkup('animation-sheet','Sprite sheet frames')}
    ${clip ? `<div class="asset-button-row">${button('Add Selected','anim:addFrames')}${button('Add All Frames','anim:addAll')}</div><div class="muted">Shift selects a range.</div>` : ''}` :
    '<p class="muted">Import one image, then slice it into frames. Transform tracks also work on objects without a sprite sheet.</p>'}
  </div>` : '<div class="pad muted">Select an object type to animate.</div>';
@@ -184,15 +185,18 @@ function drawAnimationSheet(type, image) {
  const canvas = $('#animation-sheet');
  if (!canvas || !image.naturalWidth) return;
  const atlas = spriteAtlas(type, image);
- const scale = Math.max(.5, Math.min(4, 210 / atlas.width));
- canvas.width = Math.ceil(atlas.width * scale); canvas.height = Math.ceil(atlas.height * scale);
- const ctx = canvas.getContext('2d');
- ctx.scale(scale, scale); ctx.imageSmoothingEnabled = false; ctx.drawImage(image, 0, 0);
- for (let frame = 0; frame < type.sheet.count; frame++) {
-  const box = atlasSource(atlas, frame % type.sheet.cols, Math.floor(frame / type.sheet.cols));
-  const active = animator.selection.has(frame);
-  ctx.strokeStyle = active ? '#78dfbf' : '#e0f2fc5e'; ctx.lineWidth = (active ? 2 : 1) / scale; ctx.strokeRect(...box);
- }
+ renderEditorSheet(animatorSheetView,canvas,{
+  key:type.id,image,width:atlas.width,height:atlas.height,grid:type.sheet,
+  selected:frame=>animator.selection.has(frame),
+  select(frame,event) {
+   if (event.shiftKey && animator.lastTile !== null) {
+    for (let index=Math.min(animator.lastTile,frame);index<=Math.max(animator.lastTile,frame);index++) animator.selection.add(index);
+   } else if (animator.selection.has(frame)) animator.selection.delete(frame);
+   else animator.selection.add(frame);
+   animator.lastTile = frame;
+   animatorSheetView.draw();
+  },
+ });
  for (const thumb of $('#animation-timeline').querySelectorAll('canvas[data-frame]')) {
   const frame = Number(thumb.dataset.frame), thumbContext = thumb.getContext('2d');
   const size = Math.min(thumb.width / type.sheet.w, thumb.height / type.sheet.h);
@@ -295,24 +299,6 @@ function setupAnimator() {
   const play = $('#animation-timeline [data-act="anim:play"]');
   if (play) play.textContent = 'Play';
   drawAnimationPreview();
- });
- document.addEventListener('click', event => {
-  if (event.target.id !== 'animation-sheet') return;
-  const type = animatorType(), image = tileImage(images, { image: type.image });
-  if (!image.naturalWidth) return;
-  const bounds = event.target.getBoundingClientRect(), atlas = spriteAtlas(type,image);
-  const x = (event.clientX - bounds.left) * atlas.width / bounds.width - atlas.margin;
-  const y = (event.clientY - bounds.top) * atlas.height / bounds.height - atlas.margin;
-  const column = Math.floor(x / (atlas.tileWidth + atlas.spacing)), row = Math.floor(y / (atlas.tileHeight + atlas.spacing));
-  const frame = row * type.sheet.cols + column;
-  if (column < 0 || column >= type.sheet.cols || row < 0 || frame >= type.sheet.count ||
-   x % (atlas.tileWidth + atlas.spacing) >= atlas.tileWidth || y % (atlas.tileHeight + atlas.spacing) >= atlas.tileHeight) return;
-  if (event.shiftKey && animator.lastTile !== null) {
-   for (let i = Math.min(animator.lastTile,frame); i <= Math.max(animator.lastTile,frame); i++) animator.selection.add(i);
-  } else if (animator.selection.has(frame)) animator.selection.delete(frame);
-  else animator.selection.add(frame);
-  animator.lastTile = frame;
-  drawAnimationSheet(type,image);
  });
  document.addEventListener('change', event => {
   const target = event.target, type = animatorType(), clip = animatorClip();
