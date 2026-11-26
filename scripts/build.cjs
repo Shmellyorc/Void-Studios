@@ -14,6 +14,7 @@ const html = source('shell.html')
   .replace('/*ASSET_CSS*/', () => source('asset-workspaces.css'))
   .replace('/*DEBUGGER_CSS*/', () => source('studio-debugger.css'))
   .replace('/*GAME_UI_CSS*/', () => source('game-ui.css'))
+  .replace('/*STUDIO_MENU_CSS*/', () => source('studio-menu.css'))
   .replace('/*SCENE_EFFECTS*/', () => source('scene-effects.js'))
   .replace('/*BEHAVIORS*/', () => source('behaviors.js'))
   .replace('/*TILEMAP*/', () => source('tilemap.js'))
@@ -31,6 +32,8 @@ const html = source('shell.html')
   .replace('/*PROJECT_FILE*/', () => source('project-file.js'))
   .replace('/*GAME_EXPORT*/', () => source('game-export.js'))
   .replace('/*UI_EDITOR*/', () => source('ui-editor.js'))
+  .replace('/*WORKSPACE_ZOOM*/', () => source('workspace-zoom.js'))
+  .replace('/*STUDIO_MENU*/', () => source('studio-menu.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });

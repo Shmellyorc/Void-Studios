@@ -12,8 +12,9 @@
 #tile-board{display:block;padding:20px 16px;text-align:center;background:#10161d}
 #tile-board[hidden]{display:none}
 #tile-canvas{display:inline-block;background:#192431;border:1px solid #647a8a;box-sizing:content-box;cursor:crosshair;touch-action:none}
-.animation-stage{flex:1 0 175px;display:grid;place-items:center;min-height:175px;overflow:hidden;background:#10161e}
-#animation-preview{width:min(100%,560px);height:auto;max-height:100%;object-fit:contain;image-rendering:pixelated}
+.animation-stage{flex:1 0 175px;display:flex;justify-content:safe center;align-items:safe center;min-height:175px;overflow:auto;background:#10161e}
+#animation-preview{flex:none;width:calc(min(100%,560px) * var(--workspace-zoom,1));height:auto;image-rendering:pixelated}
+#layoutview .board,#ui-board{justify-content:safe center;align-items:safe center}
 .animation-timeline{flex:0 1 44%;min-height:190px;overflow:auto;background:#18212a;border-top:1px solid var(--line)}
 .animation-transport,.animation-frame-tools,.film-strip{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line)}
 .animation-transport input[type=range]{min-width:80px;flex:1;accent-color:var(--accent);padding:0}

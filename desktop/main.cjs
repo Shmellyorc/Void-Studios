@@ -73,6 +73,7 @@ function openWindow() {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
+    autoHideMenuBar: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname,'export-preload.cjs'),

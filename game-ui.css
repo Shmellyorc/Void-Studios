@@ -19,7 +19,7 @@ button.void-ui-button:hover { filter: brightness(1.2); background: var(--void-ui
 
 #ui-board { align-items: center; }
 .ui-editor-stage {
- position: relative; flex: none; width: min(100%, 850px); overflow: hidden; touch-action: none;
+ position: relative; flex: none; width: calc(min(100%,850px) * var(--workspace-zoom,1)); overflow: hidden; touch-action: none;
  background: #203144; box-shadow: 0 8px 30px #0008, 0 0 0 1px #56677a;
 }
 .ui-editor-stage.void-ui-paused { background: #152233; }

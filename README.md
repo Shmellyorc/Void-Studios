@@ -11,8 +11,8 @@ Install Node.js 24 and run `npm ci`. Then choose how to launch the editor.
 - **Browser** — Run `npm run build`, then open `dist/VOID-Studio.html`.
 - **Desktop** — Run `npm start` to open the same editor in Electron.
 
-Use **Play** to preview a layout, **Save project** to download a `.void` file, and
-**Export Game** to create a standalone game. Preview and export bundle PixiJS
+Use **Run → Preview** to preview a layout. The **File** menu has **Save Project**
+for `.void` files and **Export Game** for standalone games. Preview and export bundle PixiJS
 locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailable.
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
@@ -209,9 +209,13 @@ menu overlay. You can turn off menu navigation on a screen such as a gameplay HU
 
 Choose **Load Menu Demo** in the UI workspace to try the Shard Runner title
 screen, HUD, and pause menu. Move with the arrow keys or D-pad and pause with
-Escape or Start. The top toolbar's **Settings** panel contains renderer
-selection, event execution mode, and the default layout grid. Layout, Tilemap,
-Animator, and UI have workspace-specific toolbars.
+Escape or Start. Open **Editor → Settings** for renderer selection, event
+execution mode, and the default layout grid.
+
+The menu bar below the header shows commands for the active workspace. Layout
+has camera and object menus, Tilemap has map and layer menus, and Animator has
+sprite sheet and clip menus. The mouse wheel zooms over the Layout, Tilemap,
+Animator, or UI canvas. The **View** menu also offers zoom commands.
 
 ## Export a game
 

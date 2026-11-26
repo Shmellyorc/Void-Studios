@@ -270,7 +270,7 @@ function renderTileEditor() {
  const names = map ? tileTools.map(([id, name, key]) => `<button class="${tileWorkspace.tool === id ? 'active' : ''}" data-act="tile:tool:${id}" title="${name} (${key})" aria-pressed="${tileWorkspace.tool === id}">${name}</button>`).join('') : '';
  $('#tile-tools').innerHTML = button(map ? 'Map Settings' : 'Create Tilemap','tile:settings',map ? '' : 'primary') + names + (map ?
   `<span class="spacer"></span>${checkbox('Grid','tile-grid',tileWorkspace.grid)}${checkbox('Flip X','tile-flipX',tileWorkspace.flipX)}${checkbox('Flip Y','tile-flipY',tileWorkspace.flipY)}
-   ${select('Zoom','tile-zoom',String(tileWorkspace.zoom),[.25,.5,.75,1,1.5,2,3].map(value => [String(value),value * 100 + '%']))}` : '');
+   ${select('Zoom','tile-zoom',String(tileWorkspace.zoom),workspaceZoomLevels.map(value => [String(value),value * 100 + '%']))}` : '');
  $('#tile-empty').hidden = Boolean(map);
  $('#tile-board').hidden = !map;
  if (atlas) drawTilePalette(atlas);
