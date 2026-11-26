@@ -60,6 +60,7 @@
 }
 #sprite-stage:focus { outline: none; }
 #sprite-stage:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+#sprite-stage.sprite-eyedropper { cursor: var(--sprite-eyedropper-cursor), crosshair; }
 #sprite-board canvas {
  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
  box-shadow: none; pointer-events: none;
@@ -69,10 +70,12 @@
  background-image: linear-gradient(to right,#aabdd338 1px,transparent 1px),linear-gradient(to bottom,#aabdd338 1px,transparent 1px);
  background-size: var(--sprite-pixel) var(--sprite-pixel);
 }
-#sprite-tools { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; padding: 0 9px 10px; }
+#sprite-tools { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; padding: 0 9px 10px; }
 #sprite-tools:empty { display: none; }
-#sprite-tools button { padding: 6px 4px; font-size: 11px; white-space: normal; min-height: 35px; }
+#sprite-tools button { display: grid; place-items: center; padding: 6px; min-height: 36px; }
+#sprite-tools svg { width: 21px; height: 21px; }
 #sprite-tools button.active { color: #a5f3d1; border-color: #699b8b; background: #214038; }
+#sprite-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #sprite-documents .tree { display: block; width: calc(100% - 14px); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; }
 #sprite-slices:not(:empty) { border-top: 1px solid var(--line); }
 #sprite-frames label { margin: 0; }
@@ -80,6 +83,12 @@
 #sprite-frames input[type=number] { width: 65px; }
 .sprite-swatches { display: flex; gap: 5px; flex-wrap: wrap; }
 .sprite-swatches button { background: var(--swatch); padding: 0; width: 23px; height: 23px; }
+.sprite-ink input[type=color], .sprite-swatches .sprite-transparent {
+ background: repeating-conic-gradient(#6a7888 0% 25%,#344354 0% 50%) 0 0 / 10px 10px;
+}
+.sprite-ink input::-webkit-color-swatch { opacity: var(--ink-opacity); }
+.sprite-ink input::-moz-color-swatch { opacity: var(--ink-opacity); }
+.sprite-paint-hint { margin: 0 0 10px; color: var(--sub); font-size: 11px; line-height: 1.4; }
 .sprite-swatches button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sprite-layer-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px; margin-bottom: 5px; }
 .sprite-layer-row button { padding: 5px 7px; }

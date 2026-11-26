@@ -50,6 +50,12 @@ editor supports stacked layers with visibility, locking, ordering, and opacity,
 a reusable palette, mirrored brushes, flood fill, an eyedropper, and shape tools.
 Scroll over the artwork to zoom. Middle-drag or hold Space and drag to pan.
 
+The left and right mouse buttons each have a paint color and opacity. With a
+drawing tool active, hold Alt (Option on Mac) and click to sample into that
+button. Sample a transparent pixel to erase with that button. You can also
+click a palette swatch with either button, including the checkerboard swatch
+for transparency.
+
 Use rectangular or elliptical selection, freehand lasso, or a magic wand with
 color tolerance and contiguous or matching-color selection. Hold Shift to add,
 Alt to subtract, or both to intersect. The **Selection** menu includes cut,

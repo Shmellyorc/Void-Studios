@@ -1,8 +1,31 @@
 const spriteWorkspace = {
- project:null,document:null,layer:null,slice:null,frame:null,tool:'pencil',color:'#52d5b0',alpha:100,size:1,
+ project:null,document:null,layer:null,slice:null,frame:null,tool:'pencil',size:1,
+ paint:{ left:{color:'#52d5b0',alpha:255},right:{color:'#000000',alpha:0} },
  zoom:8,grid:true,frameGrid:true,onion:false,filled:false,mirrorX:false,mirrorY:false,contiguous:true,tolerance:0,
- mode:'replace',mask:null,clipboard:null,gesture:null,space:false,status:'',surfaces:new Map(),
+ mode:'replace',mask:null,clipboard:null,gesture:null,space:false,alt:false,status:'',surfaces:new Map(),
 };
+const spriteTools = [
+ ['pencil','Pencil','B','<path d="m4 16 12-12a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3L8 20l-5 1zM13 7l4 4M4 16l4 4"/>'],
+ ['eraser','Eraser','E','<path d="m4 12 8-8a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8H8l-4-4a3 3 0 0 1 0-4zM8 8l8 8m-4 4h9"/>'],
+ ['fill','Fill','G','<path d="m3 13 8-8 8 8-7 7a2 2 0 0 1-2.8 0L3 14a.7.7 0 0 1 0-1zM7 3l5 5M4 13h15m1 3c-.7 1-2 2.5-2 3.5a2 2 0 0 0 4 0c0-1-1.3-2.5-2-3.5z"/>'],
+ ['eyedropper','Eyedropper','I','<path d="m14 7 2.5-2.5a2.1 2.1 0 0 1 3 3L17 10m-4-4 5 5m-4-4-9 9v3h3l9-9M4 20l1-1"/>'],
+ ['line','Line','L','<path d="M5 19 19 5"/><circle cx="5" cy="19" r="1"/><circle cx="19" cy="5" r="1"/>'],
+ ['rectangle','Rectangle','R','<rect x="4" y="6" width="16" height="12" rx="1"/>'],
+ ['ellipse','Ellipse','O','<ellipse cx="12" cy="12" rx="8" ry="6"/>'],
+ ['select-rect','Rectangular Selection','M','<rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="2 3"/>'],
+ ['select-ellipse','Elliptical Selection','N','<ellipse cx="12" cy="12" rx="8" ry="7" stroke-dasharray="2 3"/>'],
+ ['lasso','Lasso','Q','<path d="M7 17c-3-1-4-3-4-5 0-4 4-7 9-7s9 3 9 6-4 5-7 5c-2 0-5-1-5-3 0-1 1-1.5 2-1 2 1 0 5-2 6s-4 2-5 3"/>'],
+ ['wand','Magic Wand','W','<path d="m4 18 9-9 3 3-9 9zM11 11l3 3m4-12v4m-2-2h4m0 11v4m-2-2h4M5 4v4M3 6h4"/>'],
+ ['move','Move Selection','V','<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3"/>'],
+ ['slice','Slice','K','<path d="M6 3v15h15M3 6h15v15M9 15l6-6"/>'],
+];
+const spriteSelectionTools = new Set(['select-rect','select-ellipse','lasso','wand']);
+const spritePaintTools = new Set(['pencil','eraser','fill','line','rectangle','ellipse']);
+
+function spriteToolIcon(drawing) {
+ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${drawing}</svg>`;
+}
+
 const currentSprite = () => P.spriteDocuments?.find(doc => doc.id === spriteWorkspace.document);
 const spriteLayers = (doc = currentSprite()) => doc ? (P.spriteLayers ?? []).filter(layer => layer.document === doc.id) : [];
 const selectedSpriteLayer = () => spriteLayers().find(layer => layer.id === spriteWorkspace.layer);
@@ -211,8 +234,14 @@ function spriteToolFields() {
  const value = spriteWorkspace, check = (label,key) => checkbox(label,'sprite.'+key,value[key]);
  const showTolerance = value.tool === 'fill' || value.tool === 'wand';
  return '<div class="panelhead">BRUSH</div><div class="prop-group">' +
-  '<div class="two">' + field('Color','sprite.color',value.color,'color') + field('Opacity (%)','sprite.alpha',value.alpha,'number') +
-   field('Size','sprite.size',value.size,'number') + '</div>' +
+  '<div class="two">' + [['left','Left','color','alpha'],['right','Right','rightColor','rightAlpha']].map(([button,label,color,alpha]) => {
+   const ink=value.paint[button];
+   return `<div class="sprite-ink" style="--ink-opacity:${ink.alpha/255}">` +
+    field(label+' color','sprite.'+color,ink.color,'color') +
+    field(label+' opacity (%)','sprite.'+alpha,Math.round(ink.alpha*1000/255)/10,'number') + '</div>';
+  }).join('') + '</div>' +
+  '<p class="sprite-paint-hint">Alt-click the canvas to sample into either mouse button.</p>' +
+  field('Size','sprite.size',value.size,'number') +
    check('Mirror horizontally','mirrorX') + check('Mirror vertically','mirrorY') + check('Filled shapes','filled') +
    (showTolerance ? field('Color tolerance','sprite.tolerance',value.tolerance,'number') + check('Contiguous','contiguous') : '') +
    select('Selection mode','sprite.mode',value.mode,[['replace','Replace'],['add','Add'],['subtract','Subtract'],['intersect','Intersect']]) +
@@ -233,9 +262,10 @@ function renderSpriteEditor() {
  $('#layoutlabel').textContent = doc?.name ?? '';
  $('#sprite-documents').innerHTML = (P.spriteDocuments ?? []).map(item =>
   `<button class="tree prefab-tree ${item === doc ? 'selected' : ''}" data-act="sprite:document:${item.id}">${esc(item.name)}</button>`).join('');
- $('#sprite-tools').innerHTML = doc ? spriteTools.map(([key,label,shortcut]) =>
+ $('#sprite-tools').innerHTML = doc ? spriteTools.map(([key,label,shortcut,drawing]) =>
   `<button data-act="sprite:tool:${key}" class="${key === spriteWorkspace.tool ? 'active' : ''}" aria-pressed="${key === spriteWorkspace.tool}"
-   title="${label} (${shortcut})">${label}</button>`).join('') : '';
+   aria-label="${label}" title="${label} (${shortcut})">${spriteToolIcon(drawing)}</button>`).join('') : '';
+ updateSpriteCursor();
  $('#sprite-empty').hidden = Boolean(doc);
  $('#sprite-board').hidden = !doc;
  const target = doc && spriteTargets(doc)[0];
@@ -264,8 +294,12 @@ function renderSpriteEditor() {
    button('New from Selection','sprite:sliceSelection') + (area ? button('Edit Slice…','sprite:editSlice') +
     button('Export Slice PNG','sprite:exportSlice') + button('Delete Slice','sprite:removeSlice','danger ghost') : '') + '</div>';
  $('#sprite-inspector').innerHTML = spriteToolFields() +
-  '<div class="panelhead">PALETTE</div><div class="prop-group"><div class="sprite-swatches">' + doc.palette.map((color,i) =>
-   `<button title="${color}" aria-label="${color}" data-act="sprite:color:${i}" aria-pressed="${color === spriteWorkspace.color}" style="--swatch:${color}"></button>`).join('') +
+  '<div class="panelhead">PALETTE</div><div class="prop-group"><div class="sprite-swatches">' +
+   `<button class="sprite-transparent" title="Transparent · Left or right click" aria-label="Transparent"
+    data-act="sprite:color:transparent" aria-pressed="${spriteWorkspace.paint.left.alpha===0}"></button>` +
+   doc.palette.map((color,i) =>
+    `<button title="${color} · Left or right click" aria-label="${color}" data-act="sprite:color:${i}"
+     aria-pressed="${spriteWorkspace.paint.left.alpha>0 && color===spriteWorkspace.paint.left.color}" style="--swatch:${color}"></button>`).join('') +
    '</div>' + button('Add Color','sprite:addColor') + button('Remove Color','sprite:removeColor') + '</div>' +
   '<div class="panelhead">LAYERS' + button('+','sprite:addLayer') + '</div><div class="prop-group">' +
    [...layers].reverse().map(layer => `<div class="sprite-layer-row ${layer === selected ? 'selected' : ''}">
@@ -524,6 +558,17 @@ function spriteSelectionAction(action,doc) {
  });
 }
 
+function spritePaletteColor(id,button) {
+ const ink=spriteWorkspace.paint[button];
+ if (id==='transparent') ink.alpha=0;
+ else {
+  const color=currentSprite()?.palette[Number(id)];
+  if (!color) return;
+  Object.assign(ink,{color,alpha:255});
+ }
+ renderSpriteEditor();
+}
+
 function spriteEditorAction(action,id) {
  const doc=currentSprite(), layer=selectedSpriteLayer(), slice=selectedSpriteSlice();
  if (action==='new') return spriteNewDialog();
@@ -559,9 +604,9 @@ function spriteEditorAction(action,id) {
    data.data.set(previous.data.subarray(y*area.w*4,(y+1)*area.w*4),destination);
   }
  }); break;
- case 'color': spriteWorkspace.color=doc.palette[Number(id)] ?? spriteWorkspace.color;renderSpriteEditor();break;
- case 'addColor': if (!doc.palette.includes(spriteWorkspace.color)) change(()=>doc.palette.push(spriteWorkspace.color));break;
- case 'removeColor': change(()=>{doc.palette=doc.palette.filter(color=>color!==spriteWorkspace.color);});break;
+ case 'color': spritePaletteColor(id,'left');break;
+ case 'addColor': if (!doc.palette.includes(spriteWorkspace.paint.left.color)) change(()=>doc.palette.push(spriteWorkspace.paint.left.color));break;
+ case 'removeColor': change(()=>{doc.palette=doc.palette.filter(color=>color!==spriteWorkspace.paint.left.color);});break;
  case 'layer': spriteWorkspace.layer=id;renderSpriteEditor();break;
  case 'addLayer': change(()=>{
   const next=makeSpriteLayer(doc,'Layer '+(spriteLayers(doc).length+1));
@@ -643,10 +688,24 @@ function spriteBrush(data,area,mask,rgba) {
  };
 }
 
-function spriteRGBA(erase) {
- if (erase) return [0,0,0,0];
- const value=Number.parseInt(spriteWorkspace.color.slice(1),16);
- return [value>>16,(value>>8)&255,value&255,Math.round(spriteWorkspace.alpha*255/100)];
+function spriteRGBA(ink) {
+ if (!ink.alpha) return [0,0,0,0];
+ const value=Number.parseInt(ink.color.slice(1),16);
+ return [value>>16,(value>>8)&255,value&255,ink.alpha];
+}
+
+function sampleSpriteInk(doc,point,button) {
+ if (!spriteReady()) return;
+ const pixel=flattenedSprite(doc,{...point,w:1,h:1}).getContext('2d').getImageData(0,0,1,1).data;
+ const color='#'+Array.from(pixel.slice(0,3),channel=>channel.toString(16).padStart(2,'0')).join('');
+ Object.assign(spriteWorkspace.paint[button],{color,alpha:pixel[3]});
+ renderSpriteEditor();
+}
+
+function updateSpriteCursor() {
+ const {tool,alt,gesture}=spriteWorkspace;
+ $('#sprite-stage').classList.toggle('sprite-eyedropper',
+  !gesture && (tool==='eyedropper' || alt && !spriteSelectionTools.has(tool)));
 }
 
 function paintSpriteGesture(gesture,point) {
@@ -678,6 +737,14 @@ function spriteSelectionMask(gesture) {
 
 function setupSpriteStage() {
  const stage=$('#sprite-stage'), board=$('#sprite-board');
+ const eyedropper=spriteToolIcon(spriteTools.find(([tool])=>tool==='eyedropper')[3])
+  .replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ').replace('currentColor','#e5edf4');
+ stage.style.setProperty('--sprite-eyedropper-cursor',`url("data:image/svg+xml,${encodeURIComponent(eyedropper)}") 4 20`);
+ stage.addEventListener('contextmenu',event=>event.preventDefault());
+ stage.addEventListener('pointerenter',event=>{
+  spriteWorkspace.alt=event.altKey;
+  updateSpriteCursor();
+ });
  const pointAt=(event,area)=>{
   const rect=stage.getBoundingClientRect();
   const offset=(value,min,size,count)=>Math.min(count-1,Math.max(0,Math.floor((value-min)*count/size)));
@@ -685,21 +752,20 @@ function setupSpriteStage() {
  };
  stage.addEventListener('pointerdown',event=>{
   const doc=currentSprite(), state=spriteWorkspace;
-  if (!doc || state.gesture || ![0,1].includes(event.button)) return;
+  if (!doc || state.gesture || ![0,1,2].includes(event.button)) return;
   const area=spriteFrameBounds(doc,state.frame), point=pointAt(event,area), tool=state.tool;
+  const button=event.button===2 ? 'right' : 'left', ink=state.paint[button];
+  const sampling=tool==='eyedropper' || event.altKey && (button==='right' || !spriteSelectionTools.has(tool));
+  state.alt=event.altKey;
   const common={ id:event.pointerId,doc,tool,area,start:point,end:point,mask:state.mask,
    mode:event.shiftKey && event.altKey ? 'intersect' : event.shiftKey ? 'add' : event.altKey ? 'subtract' : state.mode };
   event.preventDefault();
   stage.focus({preventScroll:true});
   if (event.button===1 || state.space) {
    state.gesture={id:event.pointerId,tool:'pan',x:event.clientX,y:event.clientY,left:board.scrollLeft,top:board.scrollTop};
-  } else if (tool==='eyedropper') {
-   if (!spriteReady()) return;
-   const pixel=flattenedSprite(doc,{...point,w:1,h:1}).getContext('2d').getImageData(0,0,1,1).data;
-   state.color='#'+Array.from(pixel.slice(0,3),channel=>channel.toString(16).padStart(2,'0')).join('');
-   state.alpha=Math.round(pixel[3]*100/255);
-   return renderSpriteEditor();
-  } else if (tool==='slice' || tool==='lasso' || tool.startsWith('select-')) {
+  } else if (sampling) return sampleSpriteInk(doc,point,button);
+  else if (button==='right' && !spritePaintTools.has(tool)) return;
+  else if (tool==='slice' || tool==='lasso' || tool.startsWith('select-')) {
    state.gesture={...common,points:[point]};
    if (tool.startsWith('select-')) spriteSelectionMask(state.gesture);
   } else if (tool==='wand') {
@@ -710,7 +776,7 @@ function setupSpriteStage() {
    return drawSpriteEditor(point);
   } else if (tool==='fill') {
    return editSpriteLayer(image=>{
-    const mask=matchingSpritePixels(image.data,doc.width,area,point,state.tolerance,state.contiguous,state.mask), color=spriteRGBA(false);
+    const mask=matchingSpritePixels(image.data,doc.width,area,point,state.tolerance,state.contiguous,state.mask), color=spriteRGBA(ink);
     for (let index=0;index<mask.length;index++) if (mask[index]) image.data.set(color,index*4);
    });
   } else {
@@ -722,11 +788,12 @@ function setupSpriteStage() {
    const copy=tool==='move' ? spriteCopyPixels(base.data,state.mask,doc.width,area) : null;
    if (tool==='move' && !copy) return;
    state.gesture={...common,layer,context,base,working:new ImageData(new Uint8ClampedArray(base.data),doc.width,doc.height),
-    color:spriteRGBA(tool==='eraser'),copy};
+    color:tool==='eraser' ? [0,0,0,0] : spriteRGBA(ink),copy};
    paintSpriteGesture(state.gesture,point);
   }
   state.status='';
   stage.setPointerCapture(event.pointerId);
+  updateSpriteCursor();
   drawSpriteEditor(point);
  });
  stage.addEventListener('pointermove',event=>{
@@ -757,6 +824,7 @@ function setupSpriteStage() {
   const state=spriteWorkspace, gesture=state.gesture;
   if (gesture?.id!==event.pointerId) return;
   state.gesture=null;
+  updateSpriteCursor();
   if (name!=='pointerup') {
    if (gesture.working) gesture.context.putImageData(gesture.base,0,0);
    if (gesture.tool!=='pan') state.mask=gesture.mask;
@@ -808,6 +876,16 @@ function spriteFieldChanged(event) {
  const input=event.target, key=input.dataset.field?.split('.')[1], doc=currentSprite(), layer=selectedSpriteLayer();
  if (!key || !doc) return;
  const value=input.type==='checkbox' ? input.checked : input.value;
+ if (['color','rightColor','alpha','rightAlpha'].includes(key)) {
+  const ink=spriteWorkspace.paint[key.startsWith('right') ? 'right' : 'left'];
+  if (input.type==='color') {
+   ink.color=value;
+   if (!ink.alpha) ink.alpha=255;
+  } else {
+   ink.alpha=Math.round(255*Math.max(0,Math.min(100,Number(value)||0))/100);
+  }
+  return renderSpriteEditor();
+ }
  if (key==='view') return spriteSetFrame(value==='frame' ? 0 : null);
  if (key==='frame') return spriteSetFrame(Math.round(Number(value)||1)-1);
  if (key==='name' || key==='layerName') {
@@ -824,14 +902,14 @@ function spriteFieldChanged(event) {
   else input.value=Math.round(layer.opacity*100);
   return;
  }
- const numericLimits={alpha:[0,100],size:[1,16],tolerance:[0,255]};
+ const numericLimits={size:[1,16],tolerance:[0,255]};
  if (numericLimits[key]) {
   const [min,max]=numericLimits[key];
   spriteWorkspace[key]=Math.min(max,Math.max(min,Math.round(Number(value)||0)));
   input.value=spriteWorkspace[key];
  } else {
   spriteWorkspace[key]=value;
-  if (key==='color' || key==='slice') return renderSpriteEditor();
+  if (key==='slice') return renderSpriteEditor();
  }
  drawSpriteEditor();
 }
@@ -840,10 +918,22 @@ function setupSpriteEditor() {
  setupSpriteStage();
  $('#sprite-file').addEventListener('change',importSpriteImage);
  for (const selector of ['#sprite-inspector','#sprite-frames','#sprite-slices']) $(selector).addEventListener('change',spriteFieldChanged);
+ $('#sprite-inspector').addEventListener('contextmenu',event=>{
+  const swatch=event.target.closest('.sprite-swatches button');
+  if (!swatch) return;
+  event.preventDefault();
+  spritePaletteColor(swatch.dataset.act.split(':').at(-1),'right');
+ });
  const selectionKeys={a:'selectAll',d:'deselect',c:'copy',x:'cut',v:'paste'};
  window.addEventListener('keydown',event=>{
-  if (tab!=='sprite' || !currentSprite() || document.querySelector('dialog[open]') ||
-      document.activeElement.matches('input,select,textarea,[contenteditable],.studio-menu-command')) return;
+  if (tab!=='sprite' || !currentSprite() || document.querySelector('dialog[open]')) return;
+  if (event.key==='Alt') {
+   spriteWorkspace.alt=true;
+   updateSpriteCursor();
+   if (document.activeElement===$('#sprite-stage')) event.preventDefault();
+   return;
+  }
+  if (document.activeElement.matches('input,select,textarea,[contenteditable],.studio-menu-command')) return;
   if (event.code==='Space' && document.activeElement.matches('#sprite-stage,body')) {
    event.preventDefault();
    spriteWorkspace.space=true;
@@ -864,6 +954,16 @@ function setupSpriteEditor() {
    if (tool) spriteTool(tool[0]);
   }
  });
- window.addEventListener('keyup',event=>{ if (event.code==='Space') spriteWorkspace.space=false; });
- window.addEventListener('blur',()=>{ spriteWorkspace.space=false; });
+ window.addEventListener('keyup',event=>{
+  if (event.code==='Space') spriteWorkspace.space=false;
+  if (event.key==='Alt') {
+   spriteWorkspace.alt=false;
+   updateSpriteCursor();
+  }
+ });
+ window.addEventListener('blur',()=>{
+  spriteWorkspace.space=false;
+  spriteWorkspace.alt=false;
+  updateSpriteCursor();
+ });
 }

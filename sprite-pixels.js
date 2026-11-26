@@ -1,12 +1,6 @@
 const spriteInitialPalette = ['#151a26','#3b415b','#768198','#d5e3f0','#ffffff','#f5bd67','#f46079','#aa80ed',
  '#52d5b0','#4c95e6','#ffd897','#78b85e'];
 const spriteZoomLevels = [.25,.5,1,2,4,6,8,12,16,24,32];
-const spriteTools = [
- ['pencil','Pencil','B'],['eraser','Eraser','E'],['fill','Fill','G'],['eyedropper','Eyedropper','I'],
- ['line','Line','L'],['rectangle','Rectangle','R'],['ellipse','Ellipse','O'],
- ['select-rect','Rectangular Selection','M'],['select-ellipse','Elliptical Selection','N'],
- ['lasso','Lasso','Q'],['wand','Magic Wand','W'],['move','Move Selection','V'],['slice','Slice','K'],
-];
 
 function validSpriteSize(width,height) {
  return [width,height].every(value => Number.isInteger(value) && value >= 1 && value <= 4096) && width*height <= 4194304;
