@@ -12,7 +12,7 @@ const selectedTileLayer = () => L().tilemap?.layers.find(layer => layer.id === t
 const selectedAtlas = () => P.tilesets.find(atlas => atlas.id === tileWorkspace.atlas);
 
 function validateAssetProject(project) {
- project.version = 4;
+ project.version = 5;
  project.tilesets ??= [];
  project.enums ??= [];
  if (!Array.isArray(project.tilesets) || !Array.isArray(project.enums)) throw Error('Invalid project assets');
@@ -336,7 +336,7 @@ function drawMapEditor() {
   }
  }
  drawTileLayers(ctx, map, atlases, images, map.layers.filter(layer => !layer.above));
- for (const object of tileObjectOrder(layout,layout.instances)) {
+ for (const object of tileObjectOrder(layout,expandedLayoutInstances(P,layout))) {
   const type = T(object.type);
   if (type) drawObjectPose(ctx, type, layoutSpritePose(type, object), images);
  }

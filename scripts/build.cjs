@@ -19,11 +19,13 @@ const html = source('shell.html')
   .replace('/*NAVIGATION*/', () => source('navigation.js'))
   .replace('/*ANIMATION*/', () => source('animation.js'))
   .replace('/*EVENT_EXPRESSIONS*/', () => source('event-expressions.js'))
+  .replace('/*COMPONENTS*/', () => source('components.js'))
   .replace('/*RUNTIME*/', () => source('runtime.js'))
   .replace('/*TILE_EDITOR*/', () => source('tile-editor.js'))
   .replace('/*ANIMATOR_EDITOR*/', () => source('animator-editor.js'))
   .replace('/*STUDIO_DEBUGGER*/', () => source('studio-debugger.js'))
   .replace('/*EVENT_COMPILER*/', () => source('event-compiler.js'))
+  .replace('/*COMPONENT_EDITOR*/', () => source('component-editor.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });

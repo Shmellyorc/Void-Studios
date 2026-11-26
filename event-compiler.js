@@ -9,6 +9,10 @@ const actionExpressions = {
 
 function compileStudioEvents(project) {
  const rows = [...projectEventRows(project)];
+ const extensions = extensionRegistry(project.extensions);
+ const layoutConditions = studioBlockCatalog('condition', false, project);
+ const behaviorConditions = studioBlockCatalog('condition', true, project);
+ const actions = studioBlockCatalog('action', false, project);
  const visualFunctions = new Map(project.layouts.flatMap(layout => layout.events.filter(event => event.functionName)
   .map(event => [event.functionName, event.params || []])));
  const expressions = new Map(), mappings = [], diagnostics = [], lines = [];
@@ -40,16 +44,27 @@ function compileStudioEvents(project) {
  }
 
  function compileArguments(row, references) {
-  const conditionCatalog = row.source.kind === 'behavior' ? BEHAVIOR_CONDITIONS : C;
+  const conditionCatalog = row.source.kind === 'behavior' ? behaviorConditions : layoutConditions;
+  function captureExtension(block, name, kind) {
+   const descriptor = extensions.get(block.kind)?.block;
+   if (descriptor?.kind !== kind) return;
+   for (const parameter of descriptor.parameters) {
+    capture(row, references, name + ' · ' + parameter.name, block.args?.[parameter.name] ?? parameter.default);
+   }
+   if (kind === 'condition') capture(row, references, name + ' · expression', descriptor.expression);
+   else for (const operation of descriptor.operations) capture(row, references, name + ' · ' + operation.property, operation.value);
+  }
   capture(row, references, 'Repeat', row.event.repeat || '1');
   row.event.conditions.forEach((block,index) => {
    if (!Object.hasOwn(conditionCatalog, block.kind)) problem(row, `Condition ${index+1}`, 'Unknown condition ' + block.kind);
+   captureExtension(block, `Condition ${index+1}`, 'condition');
    for (const field of Object.hasOwn(conditionExpressions, block.kind) ? conditionExpressions[block.kind] : []) {
     capture(row, references, `Condition ${index+1} · ${field}`, block.args?.[field]);
    }
   });
   row.event.actions.forEach((block,index) => {
-   if (!Object.hasOwn(A, block.kind)) problem(row, `Action ${index+1}`, 'Unknown action ' + block.kind);
+   if (!Object.hasOwn(actions, block.kind)) problem(row, `Action ${index+1}`, 'Unknown action ' + block.kind);
+   captureExtension(block, `Action ${index+1}`, 'action');
    for (const field of Object.hasOwn(actionExpressions, block.kind) ? actionExpressions[block.kind] : []) {
     const value = block.args?.[field] ?? (field === 'restart' ? 'false' : undefined);
     capture(row, references, `Action ${index+1} · ${field}`, value);
@@ -77,7 +92,7 @@ function compileStudioEvents(project) {
   compileArguments(row, references);
   line(`    // ${commentText(source.name)} · Event ${row.number}${event.functionName ? ' · ' + commentText(event.functionName) : ''}`);
   line('    {');
-  const conditionCatalog = source.kind === 'behavior' ? BEHAVIOR_CONDITIONS : C;
+  const conditionCatalog = source.kind === 'behavior' ? behaviorConditions : layoutConditions;
   if (event.conditions.length) {
    if (event.mode === 'or') {
     line('      select(scope, check, merge) {');
@@ -101,7 +116,7 @@ function compileStudioEvents(project) {
   } else line('      select(scope) { return [scope]; },');
   line('      *execute(action, subEvent, returned) {');
   event.actions.forEach((block,index) => {
-   line('        // ' + visualBlock(block,A));
+   line('        // ' + visualBlock(block,actions));
    line(`        yield* action(${index});`);
    if (index < event.actions.length - 1 || event.children?.length) line('        if (returned()) return;');
   });

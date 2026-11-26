@@ -127,6 +127,62 @@ diagnostics attached to their visual row. Download the full generated program
 from the same window. During a breakpoint, the inspector’s **JavaScript**
 button opens the code for the paused row. Step and breakpoints work in both modes.
 
+## Prefabs
+
+In **Layout**, select an instance or Shift-click several, then choose
+**Create prefab**. You can replace that selection with a linked copy at the
+same position. Select the prefab in the sidebar to place it in any layout.
+Drag a linked copy as a group or use its inspector to set position, angle,
+and scale. **Edit prefab** lets you preview, add, remove, and reposition
+members. Saving updates every linked copy throughout the project.
+**Unlink** turns a copy into individually editable instances at their
+current positions.
+
+## Extension packs
+
+Open **Extensions** to create a pack from the included example, import a
+pack's JSON, or export one to reuse in another project. Installed blocks
+appear in the condition or action picker for both layout and behavior sheets.
+Projects and standalone games include their installed packs.
+
+A pack has a `format` of `void-studio-extension-1`, a stable `id`, a
+display `name`, a `version` string, and a `blocks` array. Block IDs and pack
+IDs start with a lowercase letter and can include lowercase letters, numbers,
+and hyphens. Keep these IDs stable when updating a pack because events
+reference them.
+
+```json
+{
+  "format": "void-studio-extension-1",
+  "id": "motion",
+  "name": "Motion",
+  "version": "1.0.0",
+  "blocks": [
+    {
+      "id": "nudge",
+      "name": "Nudge horizontally",
+      "kind": "action",
+      "parameters": [{"name": "distance", "label": "Distance", "default": "16"}],
+      "operations": [{"operation": "add", "property": "x", "value": "distance"}]
+    },
+    {
+      "id": "past-edge",
+      "name": "Is beyond edge",
+      "kind": "condition",
+      "parameters": [{"name": "edge", "label": "Edge X", "default": "640"}],
+      "expression": "Self.x > edge"
+    }
+  ]
+}
+```
+
+Blocks use the editor's expression language. Parameter values are evaluated
+for each picked instance. In the block formula, `Self` is the object picked
+by the block. A condition filters that selection. An action runs its `set`
+and `add` operations in order on each picked object. Actions can write
+`x`, `y`, `w`, `h`, `angle`, `opacity`, `vx`, and `vy`, or an instance
+variable. Use `set` to change `visible` or `text`.
+
 ## Package a desktop app
 
 Run these commands on Windows, macOS, or Linux to build for that host.

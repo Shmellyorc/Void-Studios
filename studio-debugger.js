@@ -40,13 +40,15 @@ function debugEvent(events, id) {
 
 function debugLabel(event, kind) {
  if (event?.functionName) return event.functionName;
- const catalog = kind === 'behavior' ? BEHAVIOR_CONDITIONS : C;
+ const catalog = editorDebug.conditions[kind];
  return event?.conditions.map(condition => catalog[condition.kind]?.[1] ?? condition.kind).join(' / ') || 'Unconditional event';
 }
 
 function preparePreviewDebug(project) {
  Object.assign(editorDebug, { project, mode: 'running', point: null, sourceKey: sourceKey(editorEventSource()), selected: '',
-  trace: [], samples: [], sequence: 0, lastRefresh: 0, inspectedPoint: null });
+  trace: [], samples: [], sequence: 0, lastRefresh: 0, inspectedPoint: null,
+  conditions: { layout: studioBlockCatalog('condition', false, project), behavior: studioBlockCatalog('condition', true, project) },
+  actions: studioBlockCatalog('action', false, project) });
  $('#debug-source').innerHTML = debugSources().map(source =>
   `<option value="${esc(sourceKey(source))}">${source.kind === 'layout' ? 'Layout' : 'Behavior'} · ${esc(source.name)}</option>`).join('');
  delete $('#debug-sheet-rows').dataset.rendered;
@@ -139,7 +141,8 @@ function renderDebugSheet(snapshot) {
  const pointId = visiblePoint ? `${visiblePoint.id}:${visiblePoint.actionIndex}:${stoppedHere}:${visiblePoint.conditions.join(',')}:${visiblePoint.parents.map(item => item.id).join(',')}` : '';
  const key = `${sourceKey(source)}|${pointId}|${[...editorDebug.breakpoints].join(';')}`;
  if (contents.dataset.rendered !== key) {
-  const conditions = source.kind === 'behavior' ? BEHAVIOR_CONDITIONS : C;
+  const conditions = editorDebug.conditions[source.kind];
+  const actions = editorDebug.actions;
   const walk = (events, level = 0) => events.map(event => {
    const active = visiblePoint?.id === event.id;
    const reached = visiblePoint?.parents.some(parent => sourceKey(parent.source) === sourceKey(source) && parent.id === event.id);
@@ -156,7 +159,7 @@ function renderDebugSheet(snapshot) {
      return `<div class="debug-rule debug-condition">${status}${formatBlock(block, conditions)}</div>`;
     }).join('')}
     ${event.actions.map((block,index) => `<div class="debug-rule debug-action ${actionIndex === index ? 'debug-next' : ''}">
-     ${actionIndex === index ? '<span class="next-marker" aria-label="Next action">▶</span>' : ''}${formatBlock(block,A)}</div>`).join('')}
+     ${actionIndex === index ? '<span class="next-marker" aria-label="Next action">▶</span>' : ''}${formatBlock(block,actions)}</div>`).join('')}
    </div>${walk(event.children || [],level+1)}`;
   }).join('');
   contents.innerHTML = walk(source.events) || '<p class="muted">This sheet has no events.</p>';
