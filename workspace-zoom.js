@@ -96,10 +96,11 @@ function setupWorkspaceZoom() {
  for (const [workspace,selector] of [['animate','#animation-preview'],['ui','#ui-stage']]) {
   const surface = $(selector);
   let zoom = 1;
-  register(workspace,surface,surface.parentElement,() => zoom,value => {
+  const view = register(workspace,surface,surface.parentElement,() => zoom,value => {
    zoom = value;
    surface.style.setProperty('--workspace-zoom',String(value));
   });
+  if (workspace === 'ui') enableWorkspacePan(view,()=>tab === 'ui' && !view.board.hidden && !uiWorkspace.gesture);
  }
 }
 

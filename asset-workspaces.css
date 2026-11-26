@@ -19,14 +19,15 @@
 #tile-canvas{display:inline-block;background:#192431;border:1px solid #647a8a;box-sizing:content-box;cursor:crosshair;touch-action:none}
 .animation-stage{flex:1 0 175px;display:flex;justify-content:safe center;align-items:safe center;min-height:175px;overflow:auto;background:#10161e}
 #animation-preview{flex:none;width:calc(min(100%,560px) * var(--workspace-zoom,1));height:auto;image-rendering:pixelated}
-#ui-board{justify-content:safe center;align-items:safe center}
+#ui-board{justify-content:safe center;align-items:safe center;overflow:clip}
+#ui-stage{translate:var(--workspace-pan-x,0px) var(--workspace-pan-y,0px)}
 #layoutview .board,#tile-board{position:relative;overflow:clip}
 #layoutview #stage,#tile-canvas{position:absolute;left:50%;margin:0}
 #layoutview #stage{
  top:50%;translate:calc(-50% + var(--workspace-pan-x,0px)) calc(-50% + var(--workspace-pan-y,0px));
 }
 #tile-canvas{top:20px;translate:calc(-50% + var(--workspace-pan-x,0px)) var(--workspace-pan-y,0px)}
-.board.middle-panning,.board.middle-panning canvas{cursor:grabbing}
+.board.middle-panning,.board.middle-panning :is(canvas,.ui-editor-stage,.void-ui-control,.ui-resize-handle){cursor:grabbing}
 .animation-timeline{flex:0 1 44%;min-height:190px;overflow:auto;background:#18212a;border-top:1px solid var(--line)}
 .animation-transport,.animation-frame-tools,.film-strip{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line)}
 .animation-transport input[type=range]{min-width:80px;flex:1;accent-color:var(--accent);padding:0}
