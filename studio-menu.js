@@ -8,7 +8,9 @@ const studioWorkspaceCommands = {
   ['Objects',[['Add Object Type…','addType'],['Place Instance','place'],['Create Prefab…','prefab:create']]],
  ],
  events: [
-  ['Event Sheet',[['Add Event','addevent'],['Generated JavaScript…','sheetJS']]],
+  ['Event Sheet',[['New Sheet…','evt:newSheet'],['Add Event…','addevent'],['Add Blank Event','evt:blank'],
+   ['Add Group…','evt:group'],['Include Sheet…','evt:include'],['Focus Sheet','evt:focus'],null,
+   ['Generated JavaScript…','sheetJS']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
  tiles: [

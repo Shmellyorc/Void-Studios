@@ -115,3 +115,35 @@
 .animation-rule-kind { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; }
 .animation-rule-kind button { padding: 3px 7px; }
 .animation-rule-note { margin: 0 0 7px; font-size: 11px; }
+
+#event-picker-dialog { width:min(820px,92vw); height:min(570px,86vh); }
+.event-sheet-toolbar { flex-wrap:wrap; gap:7px; }
+.event-sheet-toolbar label { gap:6px; white-space:nowrap; }
+.event-sheet-toolbar select { max-width:235px; }
+#event-sheet-settings { display:flex; gap:4px; }
+.main:has(#eventview.sheet-focused:not([hidden])) { grid-template-columns:0 minmax(0,1fr) 0; }
+.main:has(#eventview.sheet-focused:not([hidden])) > aside { visibility:hidden; }
+.event-entry { margin-left:calc(var(--depth)*18px); }
+.event-group,.event-include { margin-bottom:8px; border:1px solid #415565; border-radius:5px; background:#232f3b; }
+.event-group-heading { display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding:4px 7px; }
+.event-group-heading > button { font-size:11px; padding:4px 6px; }
+.event-group-heading > button[aria-expanded] { border-color:transparent; background:transparent; font-weight:700; color:#a6e6cf; }
+.event-group-disabled,.event-include.disabled { opacity:.55; }
+.event-grip { cursor:grab; color:#a6baca; padding:3px 1px; user-select:none; }
+.event-grip:active { cursor:grabbing; }
+.event-drop { box-shadow:inset 0 2px var(--accent); }
+.event-sheet-empty { color:var(--sub); padding:16px 8px; }
+.eventbar { flex-wrap:wrap; }
+.eventbar > strong { color:#c4afe7; }
+.event-annotation { font-size:11px; color:#aebdcc; font-style:italic; white-space:pre-wrap; overflow-wrap:anywhere; margin:5px 2px; }
+.event-annotation::before { content:'//'; margin-right:6px; color:#8cabc6; }
+.event-annotation.event-note { padding:6px 8px 3px; }
+.event-mark { color:#8ddec1; min-width:11px; }
+.eventblock .block-owner { color:var(--owner-color,#a1cbf1); }
+.eventblock .blockmain .block-owner { max-width:38%; overflow-wrap:anywhere; }
+.eventblock em { color:#dcdfa7; }
+.event-options { position:relative; }
+.event-options summary { list-style:none; color:var(--sub); cursor:pointer; padding:3px 5px; }
+.event-options[open] > div { position:absolute; right:0; z-index:3; min-width:155px; padding:4px; border:1px solid #5a7187; border-radius:4px; background:#202e3b; display:grid; gap:2px; }
+.event-options[open] > div button { text-align:left; }
+.else-label { color:#e5bc87; font-weight:700; padding:0 3px; }

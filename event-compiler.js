@@ -4,7 +4,7 @@ const actionExpressions = {
  create: ['x','y'], cameraPosition: ['x','y'], cameraZoom: ['zoom'], cameraShake: ['strength','duration'],
  log: ['value'], sound: ['frequency','duration'], audioVolume: ['value'], playAudio: ['volume','loop'],
  fadeAudio: ['value','duration'], audioBusVolume: ['value','duration'], emitParticles: ['count'], navigate: ['x','y','restart'],
- moveSolid: ['x','y'], playClip: ['restart'], setAnimationState: ['restart'], animation: ['value'], damage: ['value'], heal: ['value'],
+ moveSolid: ['x','y'], aimAt:['x','y'], spawn:['x','y'], playClip: ['restart'], setAnimationState: ['restart'], animation: ['value'], damage: ['value'], heal: ['value'],
  set: ['value'], add: ['value'], position: ['x','y'], jump: ['value'], text: ['value'], instance: ['value'],
 };
 
@@ -14,8 +14,7 @@ function compileStudioEvents(project) {
  const layoutConditions = studioBlockCatalog('condition', false, project);
  const behaviorConditions = studioBlockCatalog('condition', true, project);
  const actions = studioBlockCatalog('action', false, project);
- const visualFunctions = new Map(project.layouts.flatMap(layout => layout.events.filter(event => event.functionName)
-  .map(event => [event.functionName, event.params || []])));
+ const visualFunctions = new Map(rows.filter(({event})=>event.functionName).map(({event})=>[event.functionName,event.params??[]]));
  const expressions = new Map(), mappings = [], diagnostics = [], lines = [];
  const line = value => lines.push(value);
  const commentText = value => String(value).replace(/[\r\n\u2028\u2029]/g,' ').replace(/</g,'\\u003c');
@@ -84,6 +83,7 @@ function compileStudioEvents(project) {
  }
 
  line('({');
+ line('  format: 2,');
  line('  // Generated event plans. The runtime supplies object picking, actions, and debugger hooks.');
  line('  rows: [');
  for (const row of rows) {
@@ -115,15 +115,11 @@ function compileStudioEvents(project) {
    }
    line('      },');
   } else line('      select(scope) { return [scope]; },');
-  line('      *execute(action, subEvent, returned) {');
+  line('      *execute(action, returned) {');
   event.actions.forEach((block,index) => {
    line('        // ' + visualBlock(block,actions));
    line(`        yield* action(${index});`);
    if (index < event.actions.length - 1 || event.children?.length) line('        if (returned()) return;');
-  });
-  (event.children ?? []).forEach((_,index) => {
-   line(`        yield* subEvent(${index});`);
-   if (index < event.children.length - 1) line('        if (returned()) return;');
   });
   line('      },');
   line('    },');

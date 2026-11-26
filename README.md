@@ -184,6 +184,26 @@ and rendering. It shows inclusive timings by event sheet and timings by
 built-in behavior. Time spent at a breakpoint is excluded. Exported games run
 with the editor debugger inactive.
 
+## Event sheets
+
+Open **Event Sheet** to edit a layout sheet, a shared sheet, or a custom
+behavior sheet. Use **New Sheet** to create shared logic. A layout can run its
+own sheet or an assigned shared sheet. **Include** runs a shared sheet at that
+position in the event list. Each included sheet runs once per pass, and the
+editor prevents circular includes.
+
+Organize rows in nested, collapsible groups. Drag a row by its grip to move it,
+or use **Move to group**. Comments can describe a whole event or an individual
+condition or action. Disabling a group skips its events, and **System → Set
+group active** can change that at runtime. **Else** runs when the preceding
+branch did not match. **Trigger once while true** fires once for the same
+picked selection until the other conditions fall false.
+
+**Add Event** starts with the first condition. Choose a target, search the
+commands it supports, then configure the parameters. Fixed choices use
+dropdowns. Expression fields suggest properties after typing a name such as
+`Mouse.` or `Self.`. Both `Mouse.X` and `Mouse.x` work in formulas.
+
 ## Compiled and interpreted events
 
 The **Events** picker sets the execution mode for preview and HTML export.

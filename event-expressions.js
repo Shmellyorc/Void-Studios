@@ -127,22 +127,25 @@ function printEventExpression(node) {
  }
 }
 
+function eventSheetSources(project) {
+ return [['layout',project.layouts],['shared',project.eventSheets??[]],['behavior',project.behaviorSheets??[]]]
+  .flatMap(([kind,sheets])=>sheets.map(({id,name,events})=>({kind,id,name,events})));
+}
+
 function* projectEventRows(project) {
- const sources = [...project.layouts.map(layout => ({ kind: 'layout', id: layout.id, name: layout.name, events: layout.events })),
-  ...(project.behaviorSheets ?? []).map(sheet => ({ kind: 'behavior', id: sheet.id, name: sheet.name, events: sheet.events }))];
- for (const source of sources) {
+ for (const {events,...source} of eventSheetSources(project)) {
   let number = 0;
   function* walk(events, depth) {
    for (const event of events) {
-    yield { source, event, depth, number: ++number };
+    if (!event.group && !event.include) yield { source, event, depth, number: ++number };
     yield* walk(event.children ?? [], depth + 1);
    }
   }
-  yield* walk(source.events, 0);
+  yield* walk(events, 0);
  }
 }
 
 function eventRowShape({source,event}) {
  return JSON.stringify([source.kind, source.id, event.id, event.mode,
-  event.conditions.length, event.actions.length, event.children?.length ?? 0]);
+  event.conditions.length, event.actions.length, event.children?.length ?? 0, Boolean(event.otherwise)]);
 }

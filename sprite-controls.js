@@ -1,3 +1,4 @@
+import './event-picker-view.js';
 import './animation-machine-view.js';
 import { LitElement, css, html, svg, nothing } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';

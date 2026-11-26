@@ -53,6 +53,8 @@ const html = source('shell.html')
   .replace('/*SPRITE_EDITOR*/', () => source('sprite-editor.js'))
   .replace('/*WORKSPACE_ZOOM*/', () => source('workspace-zoom.js'))
   .replace('/*STUDIO_MENU*/', () => source('studio-menu.js'))
+  .replace('/*EVENT_WORKSPACE*/', () => source('event-workspace.js'))
+  .replace('/*EVENT_PICKER_MODEL*/', () => source('event-picker-model.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });

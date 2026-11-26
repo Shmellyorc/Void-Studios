@@ -8,8 +8,8 @@ const sourceKey = source => `${source.kind}:${source.id}`;
 const breakpointKey = (source, id) => `${sourceKey(source)}:${id}`;
 
 function editorEventSource() {
- const sheet = currentSheet();
- return sheet ? { kind: 'behavior', id: sheet.id, name: sheet.name } : { kind: 'layout', id: L().id, name: L().name };
+ const {events,...source}=editorEventSheet();
+ return source;
 }
 
 function toggleBreakpoint(source, id) {
@@ -26,8 +26,7 @@ function editorBreakpointButton(event) {
 
 function debugSources() {
  if (!editorDebug.project) return [];
- const { layouts, behaviorSheets } = editorDebug.project;
- return [...layouts.map(layout => ({ ...layout, kind: 'layout' })), ...behaviorSheets.map(sheet => ({ ...sheet, kind: 'behavior' }))];
+ return eventSheetSources(editorDebug.project);
 }
 
 function debugEvent(events, id) {
@@ -40,7 +39,7 @@ function debugEvent(events, id) {
 
 function debugLabel(event, kind) {
  if (event?.functionName) return event.functionName;
- const catalog = editorDebug.conditions[kind];
+ const catalog = editorDebug.conditions[kind==='behavior'?'behavior':'layout'];
  return event?.conditions.map(condition => catalog[condition.kind]?.[1] ?? condition.kind).join(' / ') || 'Unconditional event';
 }
 
@@ -50,7 +49,7 @@ function preparePreviewDebug(project) {
   conditions: { layout: studioBlockCatalog('condition', false, project), behavior: studioBlockCatalog('condition', true, project) },
   actions: studioBlockCatalog('action', false, project) });
  $('#debug-source').innerHTML = debugSources().map(source =>
-  `<option value="${esc(sourceKey(source))}">${source.kind === 'layout' ? 'Layout' : 'Behavior'} · ${esc(source.name)}</option>`).join('');
+  `<option value="${esc(sourceKey(source))}">${({layout:'Layout',shared:'Shared',behavior:'Behavior'})[source.kind]} · ${esc(source.name)}</option>`).join('');
  delete $('#debug-sheet-rows').dataset.rendered;
  delete $('#debug-trace').dataset.sequence;
  delete $('#debug-object').dataset.objects;
@@ -141,9 +140,14 @@ function renderDebugSheet(snapshot) {
  const pointId = visiblePoint ? `${visiblePoint.id}:${visiblePoint.actionIndex}:${stoppedHere}:${visiblePoint.conditions.join(',')}:${visiblePoint.parents.map(item => item.id).join(',')}` : '';
  const key = `${sourceKey(source)}|${pointId}|${[...editorDebug.breakpoints].join(';')}`;
  if (contents.dataset.rendered !== key) {
-  const conditions = editorDebug.conditions[source.kind];
+  const conditions = editorDebug.conditions[source.kind==='behavior'?'behavior':'layout'];
   const actions = editorDebug.actions;
   const walk = (events, level = 0) => events.map(event => {
+   if (event.group || event.include) {
+    const name=event.group??('Include · '+(editorDebug.project.eventSheets?.find(sheet=>sheet.id===event.include)?.name??'Unavailable sheet'));
+    return `<div class="debug-event" style="--event-indent:${Math.min(5,level)}"><strong>${esc(name)}</strong></div>`+
+     walk(event.children??[],level+1);
+   }
    const active = visiblePoint?.id === event.id;
    const reached = visiblePoint?.parents.some(parent => sourceKey(parent.source) === sourceKey(source) && parent.id === event.id);
    const armed = editorDebug.breakpoints.has(breakpointKey(source, event.id));

@@ -40,24 +40,6 @@ function animationStateLabel(type,value) {
  return type?.animator?.machine?.states.find(state=>state.id===value)?.name ?? value;
 }
 
-function animationBlockStateField(initial) {
- const root=$('#blockfields'), target=root.querySelector('[data-field="object"]'), host=root.querySelector('[data-animation-state]');
- if (!host || !target) return;
- function render(value) {
-  const states=T(target.value)?.animator?.machine?.states;
-  if (states?.length) {
-   const state=states.find(state=>state.id===value || state.name===value);
-   const choices=states.map(item=>[item.id,item.name]);
-   if (value && !state) choices.push([value,value+' (unavailable)']);
-   host.innerHTML=select('Animation state','state',state?.id??(value||states[0].id),choices);
-  } else {
-   host.innerHTML=field('Animation state name','state',value??'');
-  }
- }
- render(initial);
- target.addEventListener('change',()=>render(''));
-}
-
 function firstMachineState(clip) {
  return {id:uid(),name:clip.name.trim().slice(0,80)||'Initial',clip:clip.id};
 }
