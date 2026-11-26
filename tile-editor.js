@@ -12,7 +12,7 @@ const selectedTileLayer = () => L().tilemap?.layers.find(layer => layer.id === t
 const selectedAtlas = () => P.tilesets.find(atlas => atlas.id === tileWorkspace.atlas);
 
 function validateAssetProject(project) {
- project.version = 10;
+ project.version = 11;
  project.tilesets ??= [];
  project.enums ??= [];
  if (!Array.isArray(project.tilesets) || !Array.isArray(project.enums)) throw Error('Invalid project assets');
@@ -53,7 +53,7 @@ function validateAssetProject(project) {
    }
   }
  }
- if (project.types.some(type => type.animator && !validAnimator(type.animator))) throw Error('Invalid animation clips');
+ if (project.types.some(type => type.animator && !validAnimator(type.animator))) throw Error('Invalid Animator clips or state machine');
  return project;
 }
 

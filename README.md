@@ -105,6 +105,23 @@ visual event blocks. These tracks animate the sprite pose. Tiles, atlases,
 enum tags, and animation clips all travel with the project JSON and offline
 game exports.
 
+Open **State Machine** in Animator to assign clips to named states and choose
+the initial state. Each rule moves from a specific state or any state to a
+destination. All conditions on a rule must match, and the first matching
+rule wins. Available conditions compare measured movement speed or instance
+variables, or wait for the current state's one-shot clip to finish.
+
+Event sheets can use **Set animation state**, **Is in animation state**, and
+**On animation state entered**. State entry is reported on the next
+simulation tick. Setting a state takes priority over rules for that frame.
+Direct clip and frame actions switch the instance to manual animation.
+**Set animation state** resumes its state machine.
+
+In Preview, open **Inspector → Instances** and select an object to see its
+state, measured speed, and recent transitions. **Animator → Load State Machine
+Demo** opens Shard Runner with idle and walk states and a one-shot pickup
+reaction.
+
 ## Behaviors
 
 Select an object type and click **Add Behavior** in the inspector. The picker

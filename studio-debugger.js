@@ -210,11 +210,19 @@ function renderDebugObjects(snapshot) {
   picker.dataset.objects = signature;
  }
  picker.value = editorDebug.selected;
+ const state=object?.animationState;
+ const animation=state ? [['Animation state',state.name],['Speed',+state.speed.toFixed(1)+' px/s'],
+  ['Animation control',state.manual?'Manual · '+state.manual:'State machine']] : [];
  const entries = object ? [['X',+object.x.toFixed(2)],['Y',+object.y.toFixed(2)],['Rotation',+object.angle.toFixed(2)],
   ['Visible',object.visible],['Animation',object.animation?.clip?.name ?? ''],['Navigation',object.navigation?.status ?? ''],
-  ...Object.entries(object.vars ?? {})] : [];
+  ...animation,...Object.entries(object.vars ?? {})] : [];
  $('#debug-object-data').innerHTML = entries.length ? debugTable(entries)
   : `<p class="muted">${removed ? 'This instance is no longer live.' : 'No live instances.'}</p>`;
+ const history=$('#debug-animation-history');
+ history.hidden=!state;
+ history.innerHTML=state?'<h4>ANIMATION TRANSITIONS</h4><ol>'+[...state.history].reverse().map(change=>
+  `<li><strong>${esc(change.from?change.from+' → '+change.to:change.to)}</strong>
+   <small>Frame ${change.frame} · ${esc(change.reason)}</small></li>`).join('')+'</ol>':'';
  const globals = Object.entries(snapshot?.vars ?? {});
  $('#debug-global-data').innerHTML = globals.length ? debugTable(globals) : '<p class="muted">No global variables.</p>';
 }

@@ -108,3 +108,10 @@
 #export-icon-preview { object-fit: contain; border-radius: 6px; background: var(--bg); }
 #export-status { min-height: 1.4em; overflow-wrap: anywhere; }
 #export-status.export-error { color: #ffc0c8; }
+
+#animation-stage[hidden], #animation-timeline[hidden] { display: none; }
+.animation-rule-heading { margin: 10px 0 6px; color: var(--sub); font-size: 11px; }
+.animation-rule-condition { margin: 6px 0; padding: 6px 8px 0; border: 1px solid var(--line); border-radius: 5px; }
+.animation-rule-kind { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; }
+.animation-rule-kind button { padding: 3px 7px; }
+.animation-rule-note { margin: 0 0 7px; font-size: 11px; }

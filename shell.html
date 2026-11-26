@@ -21,7 +21,7 @@
 </style><style id="game-ui-style">/*GAME_UI_CSS*/</style></head><body><div class="app"><header><div class="brand"><div class="mark">V</div><div class="brandname">VOID STUDIO<small>VISUAL GAME STUDIO</small></div></div><div class="project" id="projectname"></div></header>
 <nav id="studio-menu" class="studio-menu" aria-label="Editor commands">
  <div id="studio-menu-groups" role="menubar" aria-label="VOID Studio"></div>
- <span class="studio-menu-version">v0.14</span>
+ <span class="studio-menu-version">v0.15</span>
 </nav>
 <main class="main"><aside class="sidebar"><section id="project-sidebar"><div class="panelhead">LAYOUTS<button data-act="addLayout" title="Add layout">+</button></div><div id="layouts"></div><div class="sectionline"></div><div class="panelhead">OBJECT TYPES<button data-act="addType" title="Add object type">+</button></div><div id="objects"></div><div class="sectionline"></div><div class="panelhead">PREFABS</div><div id="prefabs"></div><div class="sectionline"></div><div class="panelhead">GLOBAL VARIABLES<button data-act="addGlobal" title="Add global">+</button></div><div id="globals"></div><div class="sectionline"></div><div class="pad muted" style="font-size:11px;line-height:1.7">Double-click the canvas to place the selected object type. Drag to move; drag the bottom-right handle to resize. Alt bypasses grid snapping.</div></section><section id="tile-sidebar" hidden></section>
 <section id="ui-sidebar" hidden><div class="panelhead">UI SCREENS</div><div id="ui-screens"></div><div class="sectionline"></div><div class="panelhead">HIERARCHY</div><div id="ui-hierarchy"></div><div class="sectionline"></div><div class="panelhead">LAYOUTS</div><div id="ui-layouts"></div></section>
@@ -37,8 +37,9 @@
  <div class="hint" id="tile-status"></div>
 </div>
 <div class="view" id="animview" hidden><div id="animation-toolbar" class="subbar asset-toolbar"></div>
- <div class="animation-stage"><canvas id="animation-preview" width="560" height="300" aria-label="Animation preview"></canvas></div>
+ <div id="animation-stage" class="animation-stage"><canvas id="animation-preview" width="560" height="300" aria-label="Animation preview"></canvas></div>
  <div id="animation-timeline" class="animation-timeline"></div>
+ <void-animation-machine id="animation-machine-view" hidden></void-animation-machine>
 </div>
 <div class="view" id="uiview" hidden>
  <div class="subbar asset-toolbar" id="ui-tools"></div>
@@ -96,7 +97,7 @@
    </section>
    <section id="debug-pane-objects" hidden>
     <div class="debugger-options"><select id="debug-object" aria-label="Running instance"></select></div>
-    <div class="debug-value-panel"><h4>INSTANCE</h4><div id="debug-object-data"></div><h4>GLOBALS</h4><div id="debug-global-data"></div></div>
+    <div class="debug-value-panel"><h4>INSTANCE</h4><div id="debug-object-data"></div><section id="debug-animation-history" hidden></section><h4>GLOBALS</h4><div id="debug-global-data"></div></div>
    </section>
    <section id="debug-pane-profiler" hidden>
     <div class="debugger-options"><label><input id="debug-profiling" type="checkbox"> Capture CPU timings</label><span id="debug-particle-count" class="muted"></span></div>
@@ -152,4 +153,4 @@
    <button id="export-build" class="primary" type="submit">Download HTML</button>
   </div>
  </form>
-</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EDITOR*/</script></body></html>
+</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*ANIMATION_MACHINE_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EDITOR*/</script></body></html>

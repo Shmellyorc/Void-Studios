@@ -39,3 +39,7 @@
 .compiler-line .line-number{display:inline-block;width:50px;text-align:right;color:#8299a9;padding-right:10px;user-select:none}
 .compiler-heading{display:block;margin:7px 0 4px;padding:5px 10px;color:#91dabd;border-bottom:1px solid var(--line)}
 .compiler-diagnostics{padding-left:22px;color:#ffc2a2;font-size:12px}.event .event-js-button{font-size:10px;padding:2px 4px}
+
+#debug-animation-history ol { list-style: none; display: grid; gap: 4px; margin: 0 0 12px; padding: 0; }
+#debug-animation-history li { display: grid; gap: 2px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; overflow-wrap: anywhere; }
+#debug-animation-history small { font-size: 11px; }

@@ -17,7 +17,8 @@ const studioWorkspaceCommands = {
    ['Raise Layer','tile:raise'],['Lower Layer','tile:lower'],['Delete Layer…','tile:deleteLayer']]],
  ],
  animate: [
-  ['Animator',[['Import Sprite Sheet…','anim:import'],['Slice Sprite Sheet…','anim:slice'],['Edit Sprite','sprite:editObject']]],
+  ['Animator',[['Import Sprite Sheet…','anim:import'],['Slice Sprite Sheet…','anim:slice'],['Edit Sprite','sprite:editObject'],null,
+   ['State Machine','anim:machine'],['Load State Machine Demo…','anim:machineDemo']]],
   ['Clips',[['New Clip…','anim:new'],['Clip Settings…','anim:clipSettings'],['Duplicate Clip…','anim:duplicate'],null,
    ['Play / Pause Clip','anim:play'],['Rewind Clip','anim:rewind']]],
  ],

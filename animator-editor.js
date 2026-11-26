@@ -1,4 +1,4 @@
-const animator = { type: null, clip: null, frame: -1, selection: new Set(), lastTile: null, position: 0, playing: false, raf: 0 };
+const animator = { type: null, clip: null, frame: -1, mode:'clips', selection: new Set(), lastTile: null, position: 0, playing: false, raf: 0 };
 const animatorType = () => T(I()?.type || activeType);
 const animatorClip = () => animatorType()?.animator?.clips.find(clip => clip.id === animator.clip);
 const loopModes = [['loop', 'Loop'], ['once', 'Once'], ['pingpong', 'Ping-pong']];
@@ -10,11 +10,14 @@ function validAnimator(value) {
    frame && Number.isInteger(frame.tile) && frame.tile >= 0 && Number.isFinite(frame.duration) && frame.duration > 0) &&
   isRecord(clip.tracks) && Object.entries(clip.tracks).every(([track, keys]) => Object.hasOwn(ANIMATION_TRACKS, track) &&
    Array.isArray(keys) && keys.every((key, index) => key && Number.isFinite(key.time) && key.time >= 0 &&
-    Number.isFinite(key.value) && (!index || key.time > keys[index - 1].time))));
+    Number.isFinite(key.value) && (!index || key.time > keys[index - 1].time)))) &&
+  (value.machine===undefined || validAnimationMachine(value.machine,value.clips));
 }
 
 function layoutSpritePose(type, object) {
- const clip = type.animator?.clips.find(item => item.id === type.animator.autoplay);
+ const machine=type.animator?.machine;
+ const initial=machine?.enabled && machine.states.find(state=>state.id===machine.initial)?.clip;
+ const clip = type.animator?.clips.find(item => item.id === (initial||type.animator.autoplay));
  if (clip) {
   const pose = animationPose(clip, 0);
   return { ...object, pose, animFrame: pose.frame ?? 0 };
@@ -121,10 +124,19 @@ function renderAnimator() {
  }
  const clip = animatorClip() ?? type?.animator?.clips[0];
  animator.clip = clip?.id;
+ const machine=animator.mode==='machine';
+ $('#animation-machine-view').hidden=!machine;
+ $('#animation-stage').hidden=machine;
+ $('#animation-timeline').hidden=machine;
+ if (machine) {
+  $('#animation-toolbar').innerHTML=(type?'<span class="asset-target">'+esc(type.name)+'</span>':'')+button('Clips','anim:clips');
+  renderAnimationMachine(type);
+  return;
+ }
  const hasSheet = Boolean(type?.image && type?.sheet);
  const clipList = clip ? select('Clip', 'anim-clip', clip.id, type.animator.clips.map(item => [item.id, item.name])) : '';
  $('#animation-toolbar').innerHTML = type ? `<span class="asset-target">${esc(type.name)}</span>
-  ${button('+ New Clip','anim:new','primary')}${clipList}${clip ? button('Clip Settings','anim:clipSettings') +
+  ${button('+ New Clip','anim:new','primary')}${button('State Machine','anim:machine')}${clipList}${clip ? button('Clip Settings','anim:clipSettings') +
    button('Duplicate','anim:duplicate') + button('Delete','anim:deleteClip','danger ghost') : ''}` : '';
  $('#animation-inspector').innerHTML = type ? `<div class="panelhead">SPRITE SHEET</div><div class="pad">
   <div class="asset-button-row">${button(type.image ? 'Replace Sheet' : 'Import Sheet','anim:import')}${type.image ? button('Slice Sheet','anim:slice') : ''}${type.kind==='sprite' ? button('Edit Sprite','sprite:editObject') : ''}</div>
@@ -318,8 +330,19 @@ function setupAnimator() {
 }
 
 function animatorAction(action, id) {
- const type = animatorType(), clip = animatorClip();
+ if (action==='machineDemo') return loadAnimationDemo();
+ if (action==='machine' || action==='clips') {
+  haltAnimator();
+  animator.mode=action;
+  return renderAnimator();
+ }
+ const type = animatorType();
  if (!type) return;
+ if (animator.mode==='machine' && !['import','slice'].includes(action)) {
+  animator.mode='clips';
+  renderAnimator();
+ }
+ const clip = animatorClip();
  if (!['new','import','slice'].includes(action) && !clip) return;
  if (action !== 'play') haltAnimator();
  switch (action) {
@@ -333,6 +356,10 @@ function animatorAction(action, id) {
   case 'clipSettings': editAnimationClip(type,clip); break;
   case 'duplicate': makeAnimationClip(type,clip); break;
   case 'deleteClip':
+   if (type.animator.machine?.states.some(state=>state.clip===clip.id)) {
+    alert('This clip is assigned to an animation state. Choose a different clip for that state before deleting it.');
+    break;
+   }
    if (confirm(`Delete the ${clip.name} clip?`)) change(() => {
     type.animator.clips = type.animator.clips.filter(item => item !== clip);
     if (type.animator.autoplay === clip.id) type.animator.autoplay = '';
