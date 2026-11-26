@@ -445,28 +445,13 @@ function tilePointerCell(event) {
  const canvas = $('#tile-canvas');
  const bounds = canvas.getBoundingClientRect();
  const map = L().tilemap;
- const cell = tileCellAt(map, (event.clientX - bounds.left) * canvas.width / bounds.width,
-  (event.clientY - bounds.top) * canvas.height / bounds.height);
+ const cell = tileCellAt(map,(event.clientX-bounds.left-canvas.clientLeft)/tileWorkspace.zoom,
+  (event.clientY-bounds.top-canvas.clientTop)/tileWorkspace.zoom);
  return tileInBounds(map, ...cell) ? cell : null;
 }
 
 function setupTileEditor() {
  const canvas = $('#tile-canvas');
- const board = $('#tile-board');
- let pan = null;
- board.onpointerdown = event => {
-  if (event.button !== 1) return;
-  event.preventDefault();
-  pan = { x: event.clientX, y: event.clientY, left: board.scrollLeft, top: board.scrollTop };
-  canvas.classList.add('tile-canvas-panning');
-  board.setPointerCapture(event.pointerId);
- };
- board.onpointermove = event => {
-  if (!pan) return;
-  board.scrollLeft = pan.left + pan.x - event.clientX;
-  board.scrollTop = pan.top + pan.y - event.clientY;
- };
- board.onlostpointercapture = () => { pan = null; canvas.classList.remove('tile-canvas-panning'); };
  canvas.onpointerdown = event => {
   if (event.button !== 0 || !L().tilemap) return;
   const cell = tilePointerCell(event);

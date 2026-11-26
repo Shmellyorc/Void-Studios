@@ -320,8 +320,9 @@ execution mode, and the default layout grid.
 
 The menu bar below the header shows commands for the active workspace. Layout
 has camera and object menus, Tilemap has map and layer menus, and Animator has
-sprite sheet and clip menus. The mouse wheel zooms over the Layout, Tilemap,
-Animator, or UI canvas. The **View** menu also offers zoom commands.
+sprite sheet and clip menus. The mouse wheel zooms over the Scene, Tilemap,
+Animator, or UI canvas. Middle-drag pans the Scene and Tilemap canvases.
+**View → Reset View** restores the default zoom and canvas position.
 
 ## Audio
 

@@ -19,7 +19,14 @@
 #tile-canvas{display:inline-block;background:#192431;border:1px solid #647a8a;box-sizing:content-box;cursor:crosshair;touch-action:none}
 .animation-stage{flex:1 0 175px;display:flex;justify-content:safe center;align-items:safe center;min-height:175px;overflow:auto;background:#10161e}
 #animation-preview{flex:none;width:calc(min(100%,560px) * var(--workspace-zoom,1));height:auto;image-rendering:pixelated}
-#layoutview .board,#ui-board{justify-content:safe center;align-items:safe center}
+#ui-board{justify-content:safe center;align-items:safe center}
+#layoutview .board,#tile-board{position:relative;overflow:clip}
+#layoutview #stage,#tile-canvas{position:absolute;left:50%;margin:0}
+#layoutview #stage{
+ top:50%;translate:calc(-50% + var(--workspace-pan-x,0px)) calc(-50% + var(--workspace-pan-y,0px));
+}
+#tile-canvas{top:20px;translate:calc(-50% + var(--workspace-pan-x,0px)) var(--workspace-pan-y,0px)}
+.board.middle-panning,.board.middle-panning canvas{cursor:grabbing}
 .animation-timeline{flex:0 1 44%;min-height:190px;overflow:auto;background:#18212a;border-top:1px solid var(--line)}
 .animation-transport,.animation-frame-tools,.film-strip{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line)}
 .animation-transport input[type=range]{min-width:80px;flex:1;accent-color:var(--accent);padding:0}
@@ -34,7 +41,6 @@
 .animation-track-keys{position:relative;margin:0 14px;background:repeating-linear-gradient(to right,#91aabb27 0 1px,transparent 1px 10%);cursor:ew-resize}
 .animation-key{display:flex;position:absolute;left:var(--time);transform:translateX(-50%);top:3px;line-height:1;z-index:1}
 .animation-key button:first-child{color:#9ed6ff}.animation-key button:last-child{color:#b4c2d0;padding-left:0}
-.tile-canvas-panning{cursor:grabbing!important}
 
 #prefab-preview { display: block; width: 100%; height: auto; margin: 8px 0; background: #111c29; }
 #extension-manifest { display: block; width: 100%; min-height: 240px; margin-top: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--text); font: 13px monospace; tab-size: 2; resize: vertical; }
@@ -202,7 +208,7 @@
  border:1px solid #405469; border-radius:5px; cursor:crosshair; touch-action:none;
 }
 .artwork-sheet[data-sheet=false] { cursor:default; }
-.artwork-sheet.artwork-panning,.editor-sheet.artwork-panning { cursor:grabbing; }
+.artwork-sheet.middle-panning,.editor-sheet.middle-panning { cursor:grabbing; }
 .artwork-sheet:focus-visible { outline:1px solid var(--accent); outline-offset:2px; }
 .artwork-view-tools { display:flex; align-items:center; gap:5px; margin-top:8px; }
 .artwork-view-tools .spacer { flex:1; }

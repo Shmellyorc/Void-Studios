@@ -10,15 +10,21 @@ function nextWorkspaceZoom(view, direction) {
 
 function canZoomWorkspace(direction) {
  const view = workspaceCanvases.get(tab);
- return Boolean(view && view.surface.clientWidth && nextWorkspaceZoom(view,direction) !== view.get());
+ return Boolean(view && view.surface.clientWidth && (nextWorkspaceZoom(view,direction) !== view.get() ||
+  !direction && (view.pan?.x || view.pan?.y)));
 }
 
 function zoomWorkspace(action, point) {
  const view = workspaceCanvases.get(tab);
- if (!view || !view.surface.clientWidth) return;
+ if (!view || !view.surface.clientWidth || view.pan?.gesture.active) return;
  if (tab === 'sprite' && spriteWorkspace.gesture) return;
  const direction = action === 'in' ? 1 : action === 'out' ? -1 : 0;
  const next = nextWorkspaceZoom(view,direction);
+ if (!direction && view.pan) {
+  if (next !== view.get()) view.set(next);
+  view.pan.move(-view.pan.x,-view.pan.y);
+  return;
+ }
  if (next === view.get()) return;
  const board = view.board.getBoundingClientRect();
  const x = point?.clientX ?? board.left + board.width / 2;
@@ -27,13 +33,32 @@ function zoomWorkspace(action, point) {
  const ratioX = (x-before.left) / before.width, ratioY = (y-before.top) / before.height;
  view.set(next);
  const after = view.surface.getBoundingClientRect();
- view.board.scrollLeft += after.left + ratioX*after.width - x;
- view.board.scrollTop += after.top + ratioY*after.height - y;
+ const dx = x-after.left-ratioX*after.width, dy = y-after.top-ratioY*after.height;
+ if (view.pan) view.pan.move(dx,dy);
+ else {
+  view.board.scrollLeft -= dx;
+  view.board.scrollTop -= dy;
+ }
+}
+
+function enableWorkspacePan(view,ready) {
+ const pan = {
+  x:0,y:0,
+  move(dx,dy) {
+   pan.x += dx;
+   pan.y += dy;
+   view.surface.style.setProperty('--workspace-pan-x',pan.x+'px');
+   view.surface.style.setProperty('--workspace-pan-y',pan.y+'px');
+  },
+ };
+ pan.gesture = bindMiddlePan(view.board,pan.move,ready);
+ view.pan = pan;
 }
 
 function setupWorkspaceZoom() {
  function register(workspace,surface,board,get,set,levels=workspaceZoomLevels,reset=()=>1) {
-  workspaceCanvases.set(workspace,{ surface,board,get,set,levels,reset });
+  const view = { surface,board,get,set,levels,reset };
+  workspaceCanvases.set(workspace,view);
   let distance = 0, lastWheel = 0;
   surface.addEventListener('wheel',event => {
    if (tab !== workspace || event.deltaY === 0) return;
@@ -46,21 +71,24 @@ function setupWorkspaceZoom() {
    zoomWorkspace(distance < 0 ? 'in' : 'out',event);
    distance = 0;
   },{ passive:false });
+  return view;
  }
  const layout = $('#stage');
  $('#zoom').innerHTML = workspaceZoomLevels.map(level => `<option value="${level}">${level*100}%</option>`).join('');
  $('#zoom').value = String(zoom);
- register('layout',layout,layout.parentElement,() => zoom,value => {
+ const sceneView = register('layout',layout,layout.parentElement,() => zoom,value => {
   $('#zoom').value = String(value);
   zoom = value;
   drawEditor();
  });
- register('tiles',$('#tile-canvas'),$('#tile-board'),() => tileWorkspace.zoom,value => {
+ enableWorkspacePan(sceneView,()=>tab === 'layout' && !drag);
+ const mapView = register('tiles',$('#tile-canvas'),$('#tile-board'),() => tileWorkspace.zoom,value => {
   tileWorkspace.zoom = value;
   const select = $('#tile-tools [data-field="tile-zoom"]');
   if (select) select.value = String(value);
   drawMapEditor();
  });
+ enableWorkspacePan(mapView,()=>tab === 'tiles' && Boolean(L().tilemap) && !tileWorkspace.stroke);
  register('sprite',$('#sprite-stage'),$('#sprite-board'),() => spriteWorkspace.zoom,value => {
   spriteWorkspace.zoom = value;
   drawSpriteEditor();
@@ -73,6 +101,36 @@ function setupWorkspaceZoom() {
    surface.style.setProperty('--workspace-zoom',String(value));
   });
  }
+}
+
+function bindMiddlePan(surface,move,ready) {
+ let drag = null;
+ function cancel() {
+  if (!drag) return;
+  const pointer = drag.pointer;
+  drag = null;
+  surface.classList.remove('middle-panning');
+  if (surface.hasPointerCapture(pointer)) surface.releasePointerCapture(pointer);
+ }
+ surface.addEventListener('pointerdown',event=>{
+  if (event.button !== 1 || !ready()) return;
+  event.preventDefault();
+  surface.setPointerCapture(event.pointerId);
+  surface.classList.add('middle-panning');
+  drag = { pointer:event.pointerId,x:event.clientX,y:event.clientY };
+ });
+ surface.addEventListener('pointermove',event=>{
+  if (drag?.pointer !== event.pointerId) return;
+  if (!(event.buttons & 4)) return cancel();
+  move(event.clientX-drag.x,event.clientY-drag.y);
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+ });
+ for (const name of ['pointerup','pointercancel','lostpointercapture']) surface.addEventListener(name,event=>{
+  if (drag?.pointer === event.pointerId) cancel();
+ });
+ surface.addEventListener('auxclick',event=>{ if (event.button === 1) event.preventDefault(); });
+ return { cancel,get active() { return Boolean(drag); } };
 }
 
 function fitSheetViewport(canvas,view,width,height,inset=12,limit=8) {
@@ -102,13 +160,17 @@ function paintSheetViewport(canvas,view,paint) {
 }
 
 function bindSheetViewport(canvas,view,draw,ready) {
- let drag = null;
+ const pan = bindMiddlePan(canvas,(dx,dy)=>{
+  view.x += dx;
+  view.y += dy;
+  draw();
+ },ready);
  const point = event=>{
   const bounds = canvas.getBoundingClientRect();
   return [event.clientX-bounds.left-canvas.clientLeft,event.clientY-bounds.top-canvas.clientTop];
  };
  function zoomAt(factor,x,y) {
-  if (!ready() || drag) return;
+  if (!ready() || pan.active) return;
   const next = Math.min(48,Math.max(view.fit/4,view.zoom*factor));
   if (next === view.zoom) return;
   const ratio = next/view.zoom;
@@ -117,39 +179,13 @@ function bindSheetViewport(canvas,view,draw,ready) {
   view.zoom = next;
   draw();
  }
- function cancelPan() {
-  if (!drag) return;
-  const pointer = drag.pointer;
-  drag = null;
-  canvas.classList.remove('artwork-panning');
-  if (canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
- }
  canvas.addEventListener('wheel',event=>{
   if (!ready() || !event.deltaY) return;
   event.preventDefault();
   const delta = event.deltaMode ? Math.sign(event.deltaY)*100 : event.deltaY;
   zoomAt(Math.exp(-delta*.0025),...point(event));
  },{passive:false});
- canvas.addEventListener('pointerdown',event=>{
-  if (event.button !== 1 || !ready()) return;
-  event.preventDefault();
-  canvas.setPointerCapture(event.pointerId);
-  canvas.classList.add('artwork-panning');
-  drag = { pointer:event.pointerId,x:event.clientX,y:event.clientY };
- });
- canvas.addEventListener('pointermove',event=>{
-  if (drag?.pointer !== event.pointerId) return;
-  view.x += event.clientX-drag.x;
-  view.y += event.clientY-drag.y;
-  drag.x = event.clientX;
-  drag.y = event.clientY;
-  draw();
- });
- for (const name of ['pointerup','pointercancel','lostpointercapture']) canvas.addEventListener(name,event=>{
-  if (drag?.pointer === event.pointerId) cancelPan();
- });
- canvas.addEventListener('auxclick',event=>{ if (event.button === 1) event.preventDefault(); });
- return { zoomAt,cancelPan,sheetPoint(event) {
+ return { zoomAt,cancelPan:pan.cancel,sheetPoint(event) {
   const [x,y] = point(event);
   return [(x-view.x)/view.zoom,(y-view.y)/view.zoom];
  } };

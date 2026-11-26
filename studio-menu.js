@@ -120,7 +120,7 @@ function setupStudioMenu() {
   ['Editor',[['Undo','undo','Ctrl+Z','undo'],['Redo','redo','Ctrl+Y','redo'],null,['Settings…',null,null,'settings-open']]],
   ['Project',[['Rename Project…','rename'],['Extensions…','extension:open'],null,['Load Demo…','demo']]],
   ['View',[...workspaceTabs.map(([id,label,action]) => [label,action,null,null,id]),null,
-   ['Zoom In','zoom:in'],['Zoom Out','zoom:out'],['Reset Zoom','zoom:reset']]],
+   ['Zoom In','zoom:in'],['Zoom Out','zoom:out'],['Reset View','zoom:reset']]],
   ...Object.entries(studioWorkspaceCommands).flatMap(([workspace,list]) =>
    list.map(([label,entries]) => [label,entries,workspace])),
   ['Run',[['Preview','play','F5'],null,['Load Stress Test…','stress']]],
