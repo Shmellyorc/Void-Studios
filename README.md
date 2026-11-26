@@ -17,6 +17,41 @@ locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailab
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
 
+## Tilemaps and project enums
+
+Open **Tilemap** and create an orthogonal or isometric grid for the layout. Use
+**Import Atlas** to slice one image into tiles by width, height, margin, and
+spacing. The sample atlas lets you try painting without importing art. Use the
+toolbar to paint, erase, draw lines or rectangles, flood fill, and pick existing
+tiles. Middle-drag pans the canvas and a stroke takes one undo.
+
+Layers can draw below or above objects. Reorder, rename, duplicate, lock, hide,
+and change their opacity independently. Turn on **Solid tile collisions** for
+a layer and mark atlas tiles **Solid** to use them with Platformer, Top-Down
+Movement, or the visual **Move with solid collisions** action. Hidden layers
+can still provide collision geometry.
+
+Create project enums such as `Surface` with values `Grass` and `Water`. Tag an
+atlas tile once and its placements carry the tag. Visual events can use **Is
+standing on tagged tile**, or use world coordinates in expressions such as
+`tileHasTag("Ground", Self.x, Self.y, Enums.Surface.Water)`. Define edge masks
+with **Terrain Variant** and use the **Terrain** brush to connect matching
+variants on a layer.
+
+## Animator
+
+Select an object, open **Animator**, and import a single sprite sheet. Set the
+frame dimensions, margin, and spacing, then add selected frames or the entire
+sheet to a named clip. Edit individual frame durations, drag to reorder frames,
+and scrub or play the clip. Clips can play once, loop, or ping-pong.
+
+Keyframe sprite offset, rotation, scale, and opacity on separate tracks. Use
+linear interpolation or hold the value until the next key. Set an autoplay clip
+per object type, or use the **Play clip**, **Stop clip**, and **On clip finished**
+visual event blocks. These tracks animate the sprite pose. Tiles, atlases,
+enum tags, and animation clips all travel with the project JSON and offline
+game exports.
+
 ## Behaviors
 
 Select an object type and click **Add Behavior** in the inspector. The picker

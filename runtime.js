@@ -41,7 +41,7 @@ function loadPixi() {
 function createPixiView(canvas, { report = () => {} } = {}) {
  const entries = new Map(), textures = new Map(), images = new Map();
  const savedStyle = canvas.getAttribute('style');
- let renderer, stage, host, lastFrame;
+ let renderer, stage, objectsStage, tileStages, tileTextures = [], lastTiles, host, lastFrame;
  let closed = false, pending = false, engine = 'Canvas 2D';
 
  function restoreCanvas() {
@@ -57,7 +57,9 @@ function createPixiView(canvas, { report = () => {} } = {}) {
  function teardown() {
   restoreCanvas();
   stage?.destroy({ children: true });
-  stage = undefined;
+  stage = objectsStage = tileStages = lastTiles = undefined;
+  for (const texture of tileTextures) texture.destroy(true);
+  tileTextures = [];
   entries.clear();
   for (const texture of textures.values()) texture.destroy(true);
   textures.clear();
@@ -87,6 +89,9 @@ function createPixiView(canvas, { report = () => {} } = {}) {
    }
 
    stage = new pixi.Container();
+   objectsStage = new pixi.Container();
+   tileStages = [new pixi.Container(), new pixi.Container()];
+   stage.addChild(tileStages[0], objectsStage, tileStages[1]);
    host = document.createElement('div');
    host.style.cssText = 'display:grid;place-items:center;position:relative;flex:none;max-width:100%;max-height:65vh';
    canvas.parentNode.insertBefore(host, canvas);
@@ -134,8 +139,8 @@ function createPixiView(canvas, { report = () => {} } = {}) {
   return texture;
  }
 
- function render(layout, objects, types) {
-  lastFrame = [layout, objects, types];
+ function render(layout, objects, types, artwork) {
+  lastFrame = [layout, objects, types, artwork];
   if (!stage) return false;
   try {
    if (renderer.screen.width !== layout.width || renderer.screen.height !== layout.height) {
@@ -148,8 +153,21 @@ function createPixiView(canvas, { report = () => {} } = {}) {
     maxHeight: getComputedStyle(canvas).maxHeight,
    });
    renderer.background.color = layout.background || '#172332';
+   if (artwork !== lastTiles) {
+    for (const group of tileStages) for (const sprite of group.removeChildren()) sprite.destroy();
+    for (const texture of tileTextures) texture.destroy(true);
+    tileTextures = [];
+    artwork?.forEach((canvas, index) => {
+     if (!canvas) return;
+     const texture = PIXI.Texture.from(canvas, true);
+     texture.source.scaleMode = 'nearest';
+     tileTextures.push(texture);
+     tileStages[index].addChild(new PIXI.Sprite(texture));
+    });
+    lastTiles = artwork;
+   }
    const drawn = new Set();
-   for (const object of objects) {
+   for (const object of tileObjectOrder(layout, objects)) {
     const type = types[object.type];
     if (object.dead || !object.visible || !type) continue;
     const key = JSON.stringify([type.id, object.w, object.h, object.animFrame || 0,
@@ -161,7 +179,7 @@ function createPixiView(canvas, { report = () => {} } = {}) {
     if (!entry) {
      const sprite = new PIXI.Sprite(texture);
      sprite.anchor.set(0.5);
-     stage.addChild(sprite);
+     objectsStage.addChild(sprite);
      entry = { sprite, key };
      entries.set(object.id, entry);
     } else if (entry.key !== key) {
@@ -170,12 +188,12 @@ function createPixiView(canvas, { report = () => {} } = {}) {
     }
 
     const { sprite } = entry;
-    sprite.position.set(object.x + object.w / 2, object.y + object.h / 2);
-    sprite.width = object.w;
-    sprite.height = object.h;
-    sprite.rotation = (object.angle || 0) * Math.PI / 180;
-    sprite.alpha = Math.max(0, Math.min(1, object.opacity ?? 1));
-    stage.setChildIndex(sprite, drawn.size);
+    const pose = object.pose ?? {};
+    sprite.position.set(object.x + object.w / 2 + (pose.x ?? 0), object.y + object.h / 2 + (pose.y ?? 0));
+    sprite.scale.set(object.w / texture.width * (pose.scaleX ?? 1), object.h / texture.height * (pose.scaleY ?? 1));
+    sprite.rotation = ((object.angle || 0) + (pose.angle ?? 0)) * Math.PI / 180;
+    sprite.alpha = Math.max(0, Math.min(1, (object.opacity ?? 1) * (pose.opacity ?? 1)));
+    objectsStage.setChildIndex(sprite, drawn.size);
     drawn.add(object.id);
    }
 
@@ -218,6 +236,11 @@ function createRuntime(project, canvas, hooks={}) {
  const renderer=createPixiView(canvas,{report:m=>hooks.renderer?.(m)}); const types=Object.fromEntries(p.types.map(t=>[t.id,t])); const byName=Object.fromEntries(p.types.map(t=>[t.name,t.id]));
  function report(e){let msg=String(e.message||e);if(!errors.has(msg)){errors.add(msg);hooks.error?.(msg)}}
  const sheets = new Map(p.behaviorSheets.map(sheet => [sheet.id, sheet]));
+ const atlases = new Map((p.tilesets ?? []).map(atlas => [atlas.id, atlas]));
+ const enums = Object.fromEntries((p.enums ?? []).map(enumType => [enumType.name,
+  Object.fromEntries(enumType.values.map(value => [value.name, tileEnumToken(enumType, value)]))]));
+ let tileSolids = new Set();
+ let readTileArtwork = () => null;
  const behaviorPlans = new Map(p.types.map(type => {
   const attached = new Map(type.behaviors.map(behavior => [behavior.id, behavior.settings]));
   const builtIn = Object.entries(BUILT_IN_BEHAVIORS)
@@ -239,12 +262,13 @@ function createRuntime(project, canvas, hooks={}) {
    text: type.text || '', vx: 0, vy: 0, ground: false, dead: false, visible: true,
    ...props, id: ++uid, type: type.id, vars: structuredClone({ ...type.vars, ...props.vars }),
   };
+  if (type.animator?.autoplay) playSpriteClip(object, type, type.animator.autoplay);
   if (behaviorPlans.get(type.id).custom.length) {
    instanceClocks.set(object, { created: true, startedAt: time, previousTimers: new Map() });
   }
   return object;
  }
- function enter(id){layout=p.layouts.find(l=>l.id===id)||p.layouts[0];canvas.width=layout.width;canvas.height=layout.height;time=0;objects=layout.instances.filter(i=>types[i.type]).map(i=>make(types[i.type],i));first=true;previousPairs.clear();previousBehaviorPairs.clear();timers.clear();previousTimers.clear();changed=true;nextLayout=null;hooks.layout?.(layout.name)}
+ function enter(id){layout=p.layouts.find(l=>l.id===id)||p.layouts[0];canvas.width=layout.width;canvas.height=layout.height;time=0;tileSolids=tileSolidCells(layout.tilemap,atlases);readTileArtwork=createTileArtwork(layout,atlases,images);objects=layout.instances.filter(i=>types[i.type]).map(i=>make(types[i.type],i));first=true;previousPairs.clear();previousBehaviorPairs.clear();timers.clear();previousTimers.clear();changed=true;nextLayout=null;hooks.layout?.(layout.name)}
  const overlap=(a,b)=>a!==b&&a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
  const all=id=>objects.filter(o=>!o.dead&&o.type===id);
  const pick=(scope,id,owner)=> (scope[id] || (id===SELF_TARGET ? (owner ? [owner.object] : []) : all(id))).filter(o=>!o.dead);
@@ -253,13 +277,13 @@ function createRuntime(project, canvas, hooks={}) {
  const norm=k=>({space:' ',spacebar:' ',left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown'}[String(k).toLowerCase()]||String(k).toLowerCase());
  const keyDown=k=>keys.has(norm(k));
  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
- const functions={min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
+ const functions={tileHasTag, tileColumn, tileRow, min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
  // Small expression compiler: no eval, no access to browser globals or prototypes.
  const cache=new Map();
  function compile(src){src=String(src??'0');if(cache.has(src))return cache.get(src);let tok=[],r=/\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:([eE][+-]?\d+))?|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*)|(===|!==|==|!=|<=|>=|&&|\|\||[+\-*/%<>()!.,]))/gy,pos=0;while(pos<src.length){if(!src.slice(pos).trim())break;r.lastIndex=pos;let m=r.exec(src);if(!m)throw Error('Invalid expression near '+src.slice(pos));pos=r.lastIndex;tok.push(m[1]?['n',Number(m[1]+(m[2]||''))]:m[3]?['s',m[3].slice(1,-1).replace(/\\([nrt'"\\])/g,(_,c)=>({n:'\n',r:'\r',t:'\t'}[c]||c))]:m[4]?['id',m[4]]:['op',m[5]])}let i=0;const peek=()=>tok[i]?.[1],take=()=>tok[i++],expect=x=>{if(peek()!==x)throw Error('Expected '+x+' in '+src);i++};const prec={'||':1,'&&':2,'==':3,'===':3,'!=':3,'!==':3,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,'%':6};
  function atom(){let t=take();if(!t)throw Error('Incomplete expression: '+src);let [kind,v]=t;if(v==='('&&kind==='op'){let f=parse(0);expect(')');return f}if(kind==='op'&&['!','-','+'].includes(v)){let f=atom();return c=>v==='!'?!f(c):v==='-'?-f(c):+f(c)}if(kind==='n'||kind==='s')return ()=>v;if(kind!=='id')throw Error('Unexpected '+v);if(peek()==='('){i++;let args=[];if(peek()!==')'){do{args.push(parse(0));if(peek()!==',')break;i++}while(true)}expect(')');if(!Object.hasOwn(functions,v))throw Error('Unknown function '+v);return c=>functions[v](...args.map(f=>f(c)))}let path=[v];while(peek()==='.'){i++;let q=take();if(q?.[0]!=='id')throw Error('Expected property');path.push(q[1])}return c=>resolve(path,c)}
  function parse(min){let a=atom();while(prec[peek()]>=min&&prec[peek()]!==undefined){let op=take()[1],b=parse(prec[op]+1),prev=a;a=c=>{let x=prev(c);if(op==='&&')return x&&b(c);if(op==='||')return x||b(c);let y=b(c);switch(op){case '+':return x+y;case '-':return x-y;case '*':return x*y;case '/':return x/y;case '%':return x%y;case '==':case '===':return x===y;case '!=':case '!==':return x!==y;case '<':return x<y;case '>':return x>y;case '<=':return x<=y;case '>=':return x>=y}}}return a}let f=parse(0);if(i!==tok.length)throw Error('Unexpected token in '+src);cache.set(src,f);return f}
- const callStack=[];const functionDefs=new Map(p.layouts.flatMap(l=>l.events.filter(e=>e.functionName).map(e=>[e.functionName,e])));function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse')v=mouse;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
+ const callStack=[];const functionDefs=new Map(p.layouts.flatMap(l=>l.events.filter(e=>e.functionName).map(e=>[e.functionName,e])));function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse')v=mouse;else if(a==='Enums'&&rest.length&&Object.keys(enums).length)v=enums;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
  const attachedSheets = [...behaviorPlans.values()].flatMap(plan => plan.custom.map(({ sheet }) => sheet));
  function containsCollision(events) {
   return events.some(event => event.conditions.some(condition => condition.kind === 'collision') ||
@@ -276,11 +300,41 @@ function createRuntime(project, canvas, hooks={}) {
  }
 
  function expr(s,scope,target,index=0,owner){return compile(s)({scope,target,index,owner})}
+ function tileHasTag(layerName, x, y, tag) {
+  const tile = tileAtWorld(layout.tilemap, layerName, x, y);
+  if (!tile || !tag) return false;
+  const metadata = tileMeta(atlases.get(tile.atlas) ?? {}, tile.column, tile.row);
+  return tile.terrain === tag || metadata?.terrain === tag || (metadata?.tags ?? []).includes(tag);
+ }
+ function tileColumn(x, y) { return layout.tilemap ? tileCellAt(layout.tilemap, x, y)[0] : -1; }
+ function tileRow(x, y) { return layout.tilemap ? tileCellAt(layout.tilemap, x, y)[1] : -1; }
  let mouse={x:0,y:0,down:false,clicked:false};
- function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function action(a,s,index,owner){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false};callStack.push(local);try{executeEvent(def,s,index,owner)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'animation':o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||state.clip.name===a.clip))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
+ function action(a,s,index,owner){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false};callStack.push(local);try{executeEvent(def,s,index,owner)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
  function executeEvent(e,scope={},index=0,owner){if(e.disabled)return;try{let scopes=[scope];if(e.mode==='or'&&e.conditions.length){let matches=e.conditions.flatMap((c,i)=>condition(c,scope,e.id+':'+i,index,owner));let seen=new Set();scopes=matches.filter(s=>{let k=JSON.stringify(Object.keys(s).sort().map(id=>[id,s[id].map(o=>o.id).sort()]));if(seen.has(k))return false;seen.add(k);return true})}else for(let [i,c] of e.conditions.entries()){scopes=scopes.flatMap(s=>condition(c,s,e.id+':'+i,index,owner));if(!scopes.length)break}for(let s of scopes){let repeat=clamp(Math.floor(Number(expr(e.repeat||'1',s,null,index,owner)))||0,0,1000);for(let j=0;j<repeat;j++){for(let a of e.actions){action(a,s,j,owner);if(callStack.at(-1)?.returned)return}for(let child of e.children||[]){executeEvent(child,s,j,owner);if(callStack.at(-1)?.returned)return}}}}catch(err){report(err)}}
- function moveAxis(o,dx,dy,solids){o.x+=dx;for(let b of solids)if(overlap(o,b)){if(dx>0)o.x=b.x-o.w;else if(dx<0)o.x=b.x+b.w;o.vx=0}o.y+=dy;for(let b of solids)if(overlap(o,b)){if(dy>0){o.y=b.y-o.h;o.ground=true}else if(dy<0)o.y=b.y+b.h;o.vy=0}}
+ function moveAxis(object, dx, dy, solids) {
+  const moveX = tileLimitMotion(layout.tilemap, tileSolids, object, dx, 'x');
+  object.x += moveX;
+  if (moveX !== dx) object.vx = 0;
+  for (const solid of solids) {
+   if (!overlap(object, solid)) continue;
+   if (dx > 0) object.x = solid.x - object.w;
+   else if (dx < 0) object.x = solid.x + solid.w;
+   object.vx = 0;
+  }
+  const moveY = tileLimitMotion(layout.tilemap, tileSolids, object, dy, 'y');
+  object.y += moveY;
+  if (moveY !== dy) {
+   if (dy > 0) object.ground = true;
+   object.vy = 0;
+  }
+  for (const solid of solids) {
+   if (!overlap(object, solid)) continue;
+   if (dy > 0) { object.y = solid.y - object.h; object.ground = true; }
+   else if (dy < 0) object.y = solid.y + solid.h;
+   object.vy = 0;
+  }
+ }
  function runBuiltInBehaviors() {
   solids = objects.filter(object => !object.dead && behaviorPlans.get(object.type).solid);
   const inputAxis = (positive, negative) => Number(positive) - Number(negative);
@@ -297,11 +351,7 @@ function createRuntime(project, canvas, hooks={}) {
    for (const { definition, settings } of builtIn) {
     if (!definition.afterAnimation) definition.step(object, settings, environment);
    }
-   const animation = types[object.type].sheet;
-   if (animation && animation.count > 0 && animation.fps > 0 && animation.w > 0 && animation.h > 0 && animation.cols > 0) {
-    object.animTime = (object.animTime || 0) + dt;
-    object.animFrame = Math.floor(object.animTime * animation.fps) % animation.count;
-   }
+   advanceSpriteAnimation(object, types[object.type], dt);
    for (const { definition, settings } of builtIn) {
     if (definition.afterAnimation) definition.step(object, settings, environment);
    }
@@ -339,7 +389,18 @@ function createRuntime(project, canvas, hooks={}) {
    clock.created = false;
   }
  }
- function draw(){if(renderer.render(layout,objects,types))return;ctx.imageSmoothingEnabled=false;ctx.fillStyle=layout.background||'#172332';ctx.fillRect(0,0,canvas.width,canvas.height);for(let o of objects){if(o.dead||!o.visible)continue;let t=types[o.type];ctx.save();ctx.translate(o.x+o.w/2,o.y+o.h/2);ctx.rotate(o.angle*Math.PI/180);ctx.globalAlpha=clamp(o.opacity,0,1);drawObject(ctx,t,o,images);ctx.restore()}}
+ function draw() {
+  const artwork = readTileArtwork();
+  if (renderer.render(layout, objects, types, artwork)) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = layout.background || '#172332';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (artwork?.[0]) ctx.drawImage(artwork[0], 0, 0);
+  for (const object of tileObjectOrder(layout, objects)) {
+   if (!object.dead && object.visible) drawObjectPose(ctx, types[object.type], object, images);
+  }
+  if (artwork?.[1]) ctx.drawImage(artwork[1], 0, 0);
+ }
  function collectCollisionPairs() {
   const pairs = new Set(), buckets = new Map(), checked = new Set(), large = [];
   for (const object of objects) {
@@ -424,4 +485,4 @@ function createRuntime(project, canvas, hooks={}) {
  }
  reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause(v){paused=v;last=0},step,reset,inspect:()=>({vars,objects,layout:layout.id}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
 }
-function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(f%sh.cols)*sh.w,sy=Math.floor(f/sh.cols)*sh.h;ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}
+function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}

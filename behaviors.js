@@ -80,7 +80,6 @@ function customBehaviorFields(sheet) {
 
 function normalizeProjectBehaviors(project) {
  project.behaviorSheets ??= [];
- project.version = 2;
  for (const type of project.types) {
   if (Array.isArray(type.behaviors)) continue;
 
