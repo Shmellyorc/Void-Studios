@@ -95,8 +95,10 @@ function createGameAudio(assets = [], mix = {}, report = () => {}) {
    source.loop = voice.loop;
    source.connect(voice.gain);
    source.onended = () => finish(voice);
+   const began = context.currentTime;
    source.start();
    voice.status = 'playing';
+   voice.onStart?.(()=>context.currentTime-began);
   } catch (error) {
    if (!closed && voices.has(voice)) report(Error('Could not play ' + voice.clip.name + ': ' + error.message));
    finish(voice);
@@ -139,7 +141,7 @@ function createGameAudio(assets = [], mix = {}, report = () => {}) {
  }
  return {
   unlock,
-  play(id,{ bus,volume = 100,loop = false,tag = '',onEnd } = {}) {
+  play(id,{ bus,volume = 100,loop = false,tag = '',onEnd,onStart } = {}) {
    if (closed) return;
    const clip = clips.get(id);
    if (!clip) return report(Error('Missing audio clip'));
@@ -149,7 +151,7 @@ function createGameAudio(assets = [], mix = {}, report = () => {}) {
    }
    const channel = bus || clip.bus || 'sfx';
    if (!buses.has(channel)) return report(Error('Unknown audio channel'));
-   voices.add({ clip,tag,bus:channel,loop,onEnd,volume:clampVolume(volume),status:'queued' });
+   voices.add({ clip,tag,bus:channel,loop,onEnd,onStart,volume:clampVolume(volume),status:'queued' });
    if (!context && navigator.userActivation?.isActive) unlock();
    flush();
   },

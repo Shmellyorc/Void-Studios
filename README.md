@@ -349,6 +349,11 @@ or Confirm sound. Use **Reroll** for a new variation, tweak its waveform,
 pitch, and envelope, then audition and save it. Select a generated clip and
 choose **Edit Sound Effect** to reopen its settings.
 
+Open **Music** to place notes in a 16-step pattern across three synth tracks
+and a drum kit. Choose **Play Pattern** to audition a bar or add patterns to
+**Song Order** and choose **Play Song**. Save the result as an audio clip and
+use **Edit Music** to reopen its arrangement and instruments.
+
 Use **Play audio** in an event sheet to choose a clip, channel, volume, and
 whether it loops. Untagged sounds can overlap. A named tag replaces any
 previous playback with the same tag. **Stop audio** and **Fade audio** target

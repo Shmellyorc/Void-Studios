@@ -25,18 +25,20 @@ function renderAudioWorkspace() {
  const clip = selectedAudioClip();
  $('#audio-tools').innerHTML = button('Import Audio…','audio:import','primary') +
   button('Sound Effects…','audio:soundEffect') +
+  button('Music…','audio:music') +
   (clip ? button(audioWorkspace.preview ? 'Stop Audition' : 'Audition','audio:audition') : '') +
   '<div class="spacer"></div>' + button('Load Audio Demo…','audio:demo');
  $('#audio-tools [data-act="audio:import"]').disabled = audioWorkspace.importing;
  const list = clips.map(item => `<button class="audio-clip-row ${item === clip ? 'selected' : ''}" data-act="audio:select:${item.id}">
   <span>${esc(item.name)}</span><span>${esc(audioBuses[item.bus])}</span><span>${item.duration.toFixed(1)} s</span></button>`).join('');
  $('#audio-clips').innerHTML = list ? '<div class="audio-clip-head"><span>Name</span><span>Channel</span><span>Duration</span></div>' + list :
-  '<div class="empty">Import audio or create a sound effect to start the library.</div>';
+  '<div class="empty">Import audio, create a sound effect, or make music.</div>';
  const inspector = $('#audio-inspector');
  inspector.innerHTML = (clip ? '<div class="panelhead">CLIP</div><div class="prop-group">' +
   field('Name','audio-clip-name',clip.name) +
   select('Default channel','audio-clip-bus',clip.bus,Object.entries(audioBuses)) +
   (clip.soundEffect ? button('Edit Sound Effect…','audio:editEffect') : '') +
+  (clip.music ? button('Edit Music…','audio:editMusic') : '') +
   button('Remove Clip','audio:remove','danger ghost') + '</div>' : '') +
   '<div class="panelhead">MIXER</div><div class="prop-group audio-mixer">' + Object.entries(audioBuses).map(([id,name]) => {
    const amount = P.audioMixer?.[id] ?? 100;
@@ -109,6 +111,8 @@ function studioAudioAction(action, id) {
  const clip = selectedAudioClip();
  if (action === 'soundEffect') return editStudioSoundEffect();
  if (action === 'editEffect' && clip?.soundEffect) return editStudioSoundEffect(clip);
+ if (action === 'music') return editStudioMusic();
+ if (action === 'editMusic' && clip?.music) return editStudioMusic(clip);
  if (action === 'import') {
   if (!audioWorkspace.importing) $('#audio-file').click();
  } else if (action === 'demo') {
