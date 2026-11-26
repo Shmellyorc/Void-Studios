@@ -33,8 +33,13 @@ function runGameBuild(contents, request) {
 
 ipcMain.handle('game-export:host',event => {
   editorContents(event);
-  return { platform: process.platform, arch: process.arch };
+  return getExportHost();
 });
+
+async function getExportHost() {
+  const { canBuildLinuxDeb } = require(path.join(path.dirname(buildTool),'linux-deb.cjs'));
+  return { platform: process.platform, arch: process.arch, deb: await canBuildLinuxDeb() };
+}
 
 ipcMain.handle('game-export:build',async (event, input, html) => {
   const contents = editorContents(event);
@@ -45,14 +50,16 @@ ipcMain.handle('game-export:build',async (event, input, html) => {
     const { gameBuildSettings, gameArchiveName } = require(buildTool);
     const settings = gameBuildSettings(input);
     if (typeof html !== 'string' || !html.startsWith('<!doctype html>')) throw Error('The game has no HTML to package.');
+    if (settings.format === 'deb' && !(await getExportHost()).deb) throw Error('Building a .deb requires dpkg-deb on the Linux host.');
+    const extension = settings.format;
     const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(contents), {
       title: 'Save desktop game',
       defaultPath: path.join(app.getPath('downloads'),gameArchiveName(settings)),
-      filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+      filters: [{ name: extension === 'deb' ? 'Ubuntu / Debian package' : 'ZIP archive', extensions: [extension] }],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     const destination = result.filePath;
-    if (path.extname(destination).toLowerCase() !== '.zip') throw Error('Choose a filename ending in .zip.');
+    if (path.extname(destination).toLowerCase() !== '.' + extension) throw Error('Choose a filename ending in .' + extension + '.');
     await runGameBuild(contents,{ input: settings, html, destination, electronVersion: process.versions.electron });
     buildOutputs.set(contents,destination);
     return { path: destination };

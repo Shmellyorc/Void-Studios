@@ -5,6 +5,7 @@ const path = require('node:path');
 const { api } = require('@electron-forge/core');
 const studio = require('../package.json');
 const { buildDesktopGame, gameArchiveName, gameBuildSettings } = require('../desktop/game-build.cjs');
+const { buildLinuxDeb, canBuildLinuxDeb, linuxDebName } = require('../desktop/linux-deb.cjs');
 
 const root = path.resolve(__dirname, '..');
 const htmlName = 'VOID-Studio.html';
@@ -21,14 +22,14 @@ async function stageBuildTools(directory) {
     });
   }
   await Promise.all([
-    ...['game-build.cjs','game-main.cjs','game-preload.cjs'].map(file => fs.copyFile(path.join(root,'desktop',file),path.join(directory,file))),
+    ...['game-build.cjs','game-main.cjs','game-preload.cjs','linux-deb.cjs'].map(file => fs.copyFile(path.join(root,'desktop',file),path.join(directory,file))),
     fs.copyFile(path.join(root,'LICENSE'),path.join(directory,'VOID-STUDIO-LICENSE')),
   ]);
 }
 
-async function makeGame(game) {
+async function makeGame(game, format) {
   const input = gameBuildSettings({
-    title: path.parse(game).name, version: '1.0.0', platform: process.platform, arch: process.arch,
+    title: path.parse(game).name, version: '1.0.0', platform: process.platform, arch: process.arch, format,
   });
   const html = await fs.readFile(game,'utf8');
   const output = path.join(root,'out','games');
@@ -40,11 +41,12 @@ async function makeGame(game) {
 
 async function makeDesktopApp() {
   const args = process.argv.slice(2);
-  const game = args[0] === '--game' && args.length === 2 ? path.resolve(args[1]) : null;
+  const game = args[0] === '--game' && (args.length === 2 || args.length === 3 && args[2] === '--deb')
+    ? path.resolve(args[1]) : null;
   if (args.length && (!game || !/\.html?$/i.test(game))) {
-    throw new Error('Usage: npm run make:game -- <self-contained-game.html>');
+    throw new Error('Usage: npm run make:game -- <self-contained-game.html> [--deb]');
   }
-  if (game) return makeGame(game);
+  if (game) return makeGame(game, args[2] === '--deb' ? 'deb' : 'zip');
 
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), 'void-studio-'));
   const buildTools = path.join(stage,'build-tools');
@@ -88,6 +90,15 @@ async function makeDesktopApp() {
         await fs.copyFile(artifact, file);
         console.log(`Created ${path.relative(root, file)}`);
       }
+    }
+    if (platform === 'linux' && ['x64','arm64'].includes(arch) && await canBuildLinuxDeb()) {
+      const file = path.join(destination,linuxDebName(studio.name,studio.version,arch));
+      await buildLinuxDeb({
+        directory: path.join(stage,'out',`${studio.productName}-linux-${arch}`), executable: studio.productName,
+        packageName: studio.name, title: studio.productName, version: studio.version, arch,
+        category: 'Development', destination: file,
+      });
+      console.log(`Created ${path.relative(root, file)}`);
     }
   } finally {
     await fs.rm(stage, { recursive: true, force: true, maxRetries: 3 });

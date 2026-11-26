@@ -4,25 +4,28 @@ const { randomUUID } = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
+const { buildLinuxDeb, canBuildLinuxDeb, linuxDebName } = require('./linux-deb.cjs');
 
 const platforms = { win32: 'windows', darwin: 'macos', linux: 'linux' };
 
 function gameBuildSettings(input) {
-  const { title, version, platform, arch, icon } = input ?? {};
+  const { title, version, platform, arch, icon, format = 'zip' } = input ?? {};
   if (typeof title !== 'string' || !title.trim() || title.length > 100) throw Error('Enter a game title of up to 100 characters.');
   if (typeof version !== 'string' || !/^(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})$/.test(version) ||
       version.split('.').some(part => Number(part) > 65535)) throw Error('Enter a version like 1.0.0, with each number at most 65535.');
   if (!Object.hasOwn(platforms,platform) || !['x64','arm64'].includes(arch)) throw Error('Select a desktop platform and architecture.');
+  if (format !== 'zip' && !(format === 'deb' && platform === 'linux')) throw Error('Select an archive format supported by the target platform.');
   if (icon && (typeof icon !== 'string' || icon.length > 500000 || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(icon))) {
     throw Error('The game icon must be a PNG.');
   }
   let name = title.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').slice(0,60).replace(/[. ]+$/,'');
   if (!name || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = 'VOID Game';
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'game';
-  return { title: title.trim(), version, platform, arch, icon, name, slug };
+  return { title: title.trim(), version, platform, arch, icon, name, slug, format };
 }
 
 function gameArchiveName(settings) {
+  if (settings.format === 'deb') return linuxDebName('void-game-' + settings.slug,settings.version,settings.arch);
   return `${settings.name}-${settings.version}-${platforms[settings.platform]}-${settings.arch}.zip`;
 }
 
@@ -87,6 +90,9 @@ async function archiveGame(directory, destination) {
 
 async function buildDesktopGame({ input, html, destination, electronVersion }, progress = () => {}) {
   const settings = gameBuildSettings(input);
+  if (settings.format === 'deb' && !await canBuildLinuxDeb()) {
+    throw Error('Building a .deb requires dpkg-deb on the Linux host.');
+  }
   if (typeof html !== 'string' || !html.trim()) throw Error('The game has no HTML to package.');
   progress('Preparing game files…');
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(),'void-game-'));
@@ -127,8 +133,16 @@ async function buildDesktopGame({ input, html, destination, electronVersion }, p
       afterExtract: [async () => { progress('Packaging the desktop app…'); }],
     });
     if (!built) throw Error('Electron Packager did not create an app.');
-    progress('Writing the ZIP archive…');
-    await archiveGame(built,destination);
+    if (settings.format === 'deb') {
+      progress('Writing the Ubuntu / Debian package…');
+      await buildLinuxDeb({
+        directory: built, executable: name, packageName: 'void-game-' + slug, title, version, arch,
+        category: 'Game', icon: settings.icon ? path.join(source,'icon.png') : undefined, destination,
+      });
+    } else {
+      progress('Writing the ZIP archive…');
+      await archiveGame(built,destination);
+    }
     return destination;
   } finally {
     await fs.rm(temporary,{ recursive: true, force: true, maxRetries: 3 });

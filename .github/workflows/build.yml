@@ -27,7 +27,9 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: void-studio-${{ runner.os }}-${{ runner.arch }}
-          path: out/studio/*.zip
+          path: |
+            out/studio/*.zip
+            out/studio/*.deb
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
         if: runner.os == 'Linux'

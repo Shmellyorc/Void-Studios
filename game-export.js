@@ -17,6 +17,7 @@ function setupGameExport() {
  const iconField = $('#export-icon'), iconPreview = $('#export-icon-preview'), removeIcon = $('#export-remove-icon');
  const status = $('#export-status'), build = $('#export-build'), close = $('#export-close'), reveal = $('#export-reveal');
  const desktop = window.voidDesktopExport;
+ const debOption = target.querySelector('option[value="linux-deb"]');
  let busy = false, icon = '', host;
 
  function showStatus(message, error = false) {
@@ -29,12 +30,14 @@ function setupGameExport() {
   iconPreview.hidden = removeIcon.hidden = !icon;
  }
  function showTarget() {
-  const web = target.value === 'web';
+  const web = target.value === 'web', deb = target.value === 'linux-deb';
   $('#export-arch-row').hidden = web;
   $('#export-target-hint').textContent = web
    ? desktop ? 'A self-contained HTML file you can run offline.' : 'Desktop builds are available in the VOID Studio desktop app.'
+   : deb ? 'An installable package that adds the game to the applications menu.'
+   : target.value === 'linux' ? 'A portable ZIP. On Ubuntu, use the installable package when available.'
    : 'A ZIP with a portable app. The first build for a target may download the Electron runtime.';
-  build.textContent = web ? 'Download HTML' : 'Build desktop ZIP';
+  build.textContent = web ? 'Download HTML' : deb ? 'Build .deb' : 'Build desktop ZIP';
  }
  function setBusy(value) {
   busy = value;
@@ -73,11 +76,15 @@ function setupGameExport() {
   reveal.hidden = true;
   dialog.showModal();
  };
- if (desktop) desktop.host().then(info => { host = info; }).catch(error => showStatus(error.message,true));
+ if (desktop) desktop.host().then(info => {
+  host = info;
+  debOption.hidden = debOption.disabled = !info.deb;
+ }).catch(error => showStatus(error.message,true));
  else for (const option of target.options) option.disabled = option.value !== 'web';
  target.onchange = () => {
   reveal.hidden = true;
-  if (host?.platform === target.value && ['x64','arm64'].includes(host.arch)) arch.value = host.arch;
+  const platform = target.value === 'linux-deb' ? 'linux' : target.value;
+  if (host?.platform === platform && ['x64','arm64'].includes(host.arch)) arch.value = host.arch;
   showStatus('');
   showTarget();
  };
@@ -117,7 +124,8 @@ function setupGameExport() {
   const settings = readSettings();
   if (!settings) return;
   store(settings);
-  const platform = target.value;
+  const deb = target.value === 'linux-deb';
+  const platform = deb ? 'linux' : target.value;
   const { buildSettings: stored, ...scene } = P;
   const game = { ...scene, name: settings.title, activeLayout: settings.layout || L().id };
   reveal.hidden = true;
@@ -133,7 +141,7 @@ function setupGameExport() {
     showStatus('HTML sent to browser downloads.');
     return;
    }
-   const result = await desktop.build({ ...settings, platform, arch: arch.value },html);
+   const result = await desktop.build({ ...settings, platform, arch: arch.value, format:deb ? 'deb' : 'zip' },html);
    if (result.error) throw Error(result.error);
    if (result.canceled) showStatus('Desktop export canceled.');
    else {

@@ -228,7 +228,9 @@
     <div class="two">
      <label>Target<select id="export-target">
       <option value="web">Web (HTML)</option><option value="win32">Windows</option>
-      <option value="darwin">macOS</option><option value="linux">Linux</option>
+      <option value="darwin">macOS</option>
+      <option value="linux-deb" hidden disabled>Ubuntu / Debian (.deb)</option>
+      <option value="linux">Linux (portable ZIP)</option>
      </select></label>
      <label id="export-arch-row" hidden>Architecture<select id="export-arch">
       <option value="x64">x64 (Intel/AMD)</option><option value="arm64">ARM64 (including Apple Silicon)</option>
