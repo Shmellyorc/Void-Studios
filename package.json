@@ -1,0 +1,23 @@
+{
+  "name": "void-studio",
+  "productName": "VOID Studio",
+  "version": "0.2.0",
+  "description": "Offline visual 2D game development for the VOID ecosystem",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "start": "npm run build && electron .",
+    "make": "npm run build && node scripts/package.cjs",
+    "make:game": "node scripts/package.cjs --game"
+  },
+  "devDependencies": {
+    "@electron-forge/core": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "electron": "45.5.0",
+    "pixi.js": "8.16.0"
+  }
+}
