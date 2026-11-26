@@ -32,6 +32,21 @@ function linuxDebName(packageName, version, arch) {
   return `${packageName}_${debVersion(version)}_${architectures[arch]}.deb`;
 }
 
+async function preparePackageTree(directory) {
+  await fs.chmod(directory, 0o755);
+  let size = 0;
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) size += await preparePackageTree(file);
+    else if (entry.isFile()) {
+      const info = await fs.stat(file);
+      await fs.chmod(file, info.mode & 0o111 ? 0o755 : 0o644);
+      size += Math.ceil(info.size / 1024);
+    }
+  }
+  return size;
+}
+
 async function buildLinuxDeb({ directory, executable, packageName, title, version, arch, category, icon, destination }) {
   if (!Object.hasOwn(architectures,arch) || !/^[a-z][a-z0-9-]+$/.test(packageName) ||
       !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/i.test(version)) {
@@ -41,7 +56,6 @@ async function buildLinuxDeb({ directory, executable, packageName, title, versio
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), 'void-deb-'));
   const output = path.join(path.dirname(destination), '.void-' + randomUUID() + '.deb');
   try {
-    await fs.chmod(stage, 0o755);
     const control = path.join(stage, 'DEBIAN');
     const appPath = '/opt/' + packageName;
     const command = '/usr/bin/' + packageName;
@@ -56,8 +70,6 @@ async function buildLinuxDeb({ directory, executable, packageName, title, versio
     await fs.cp(directory, app, { recursive: true, verbatimSymlinks: true });
     const sandbox = path.join(app, 'chrome-sandbox');
     if (!(await fs.lstat(sandbox)).isFile()) throw Error('Electron did not provide its Chromium sandbox helper.');
-    // dpkg-deb records root ownership. Only the official Electron helper is setuid.
-    await fs.chmod(sandbox, 0o4755);
     const appExecutable = path.join(app, executable);
     if (!(await fs.lstat(appExecutable)).isFile()) throw Error('Electron did not provide the app executable.');
     const launcher = path.posix.join(appPath, packageName);
@@ -72,17 +84,21 @@ async function buildLinuxDeb({ directory, executable, packageName, title, versio
       await fs.copyFile(icon, path.join(icons, packageName + '.png'));
       desktopIcon = packageName;
     }
-    await Promise.all([
-      fs.writeFile(path.join(control, 'control'), [
-        'Package: ' + packageName, 'Version: ' + debVersion(version), 'Architecture: ' + architecture,
-        'Section: ' + (category === 'Development' ? 'devel' : 'games'), 'Priority: optional',
-        'Maintainer: VOID Studio contributors', 'Depends: ' + dependencies, 'Description: ' + name, '',
-      ].join('\n')),
-      fs.writeFile(path.join(desktop, packageName + '.desktop'), [
-        '[Desktop Entry]', 'Type=Application', 'Name=' + name.replace(/\\/g, '\\\\'), 'Exec=' + command,
-        'Icon=' + desktopIcon, 'Terminal=false', 'Categories=' + category + ';', '',
-      ].join('\n')),
-    ]);
+    await fs.writeFile(path.join(desktop, packageName + '.desktop'), [
+      '[Desktop Entry]', 'Type=Application', 'Name=' + name.replace(/\\/g, '\\\\'), 'Exec=' + command,
+      'Icon=' + desktopIcon, 'Terminal=false', 'Categories=' + category + ';', '',
+    ].join('\n'));
+    // Packager's temporary directories can be private, but the installed app
+    // must be readable and executable by regular users.
+    const size = await preparePackageTree(stage);
+    // dpkg-deb records root ownership. Only the official Electron helper is setuid.
+    await fs.chmod(sandbox, 0o4755);
+    await fs.writeFile(path.join(control, 'control'), [
+      'Package: ' + packageName, 'Version: ' + debVersion(version), 'Architecture: ' + architecture,
+      'Section: ' + (category === 'Development' ? 'devel' : 'games'), 'Priority: optional',
+      'Maintainer: VOID Studio contributors', 'Installed-Size: ' + size, 'Depends: ' + dependencies,
+      'Description: ' + name, '',
+    ].join('\n'), { mode: 0o644 });
     await run('dpkg-deb', ['--root-owner-group', '-Zgzip', '--build', stage, output]);
     await fs.rename(output, destination);
   } finally {
