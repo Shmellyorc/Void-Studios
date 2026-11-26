@@ -349,8 +349,10 @@ function animatorAction(action, id) {
    const frames = action === 'addAll' ? Array.from({length:type.sheet.count},(_,index)=>index) : [...animator.selection].sort((a,b)=>a-b);
    if (clip.frames.length + frames.length > 4096) { alert('A clip supports up to 4096 frames'); break; }
    if (frames.length) change(() => {
+    const doc=P.spriteDocuments?.find(item=>item.id===type.spriteDocument);
+    const source=doc?spriteTimelineFrames(doc):[];
     animator.frame = clip.frames.length;
-    clip.frames.push(...frames.map(tile => ({ tile, duration: 100 })));
+    clip.frames.push(...frames.map(tile => ({ tile, duration:source[tile]?.duration??100 })));
     animator.selection.clear();
    });
    break;

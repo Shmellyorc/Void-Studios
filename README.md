@@ -75,12 +75,21 @@ copy, paste, flip, and rotate. Drag with **Move Selection** to reposition the
 selected pixels. Draw a named rectangle with **Slice**, or create a slice from
 a selection. Export a slice or the whole composited image as PNG.
 
-Set up a frame grid and switch between the full sheet and a single frame. Use
-**Copy Previous** and onion skinning when drawing consecutive frames. **Link to
-Object** publishes the composite to an object, and **Open Animator** lets you
-turn the frames into clips. Edits to the linked artwork update the sheet the
-clips use. The binary project retains the editable layers, palette, and slices.
-The game export carries the published artwork.
+The **Timeline** lists layers down the side and frames across the top. Pick a
+cell to draw on that layer in that frame. Add a blank frame or duplicate the
+current frame across every layer. Drag frame headings to reorder them, or use
+the arrow buttons. Set each frame's duration in milliseconds and press **Play**
+to preview the loop. Onion skinning can show the previous and next frames
+with separate colors and opacity. **Copy Previous** copies pixels on the
+active layer.
+
+**Link to Object** publishes the composite to an object. In **Animator**, new
+clip frames added from a linked sprite use its timeline durations. Existing
+clips keep the same artwork and timing when frames move in the sprite sheet.
+Slices inside a single frame travel with it. A frame used by an Animator clip
+or named slice can be deleted after that reference is removed. Binary project
+files retain the editable layers, timeline, palette, and slices. Game exports
+carry the published artwork and clips.
 
 ## Animator
 

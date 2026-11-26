@@ -6,13 +6,17 @@ function validSpriteSize(width,height) {
  return [width,height].every(value => Number.isInteger(value) && value >= 1 && value <= 4096) && width*height <= 4194304;
 }
 
-function spriteSheetGrid(width,height,grid) {
+function spriteSheetGrid(width,height,grid,frameCount) {
  const { w,h,margin = 0,spacing = 0 } = grid;
  if (![w,h,margin,spacing].every(Number.isInteger) || w < 1 || h < 1 || margin < 0 || spacing < 0) return null;
  const [cols,rows] = atlasSize({ width,height,tileWidth:w,tileHeight:h,margin,spacing });
- const count = cols*rows;
- return count > 0 && count <= 4096 ? { w,h,margin,spacing,cols,count,fps:grid.fps ?? 0 } : null;
+ const count = frameCount ?? cols*rows;
+ return Number.isInteger(count) && count > 0 && count <= 4096 && count <= cols*rows
+  ? { w,h,margin,spacing,cols,count,fps:grid.fps ?? 0 } : null;
 }
+
+const spriteFrameCount = doc => doc.sheet?.count ?? 1;
+const validSpriteFrameDuration = value => Number.isInteger(value) && value>=1 && value<=60000;
 
 function validateSpriteDocuments(project) {
  project.spriteDocuments ??= [];
@@ -27,8 +31,13 @@ function validateSpriteDocuments(project) {
       doc.palette.some(color => typeof color !== 'string' || !/^#[a-f\d]{6}$/i.test(color))) throw Error('Invalid sprite document');
   ids.add(doc.id);
   if (doc.sheet) {
-   const grid = spriteSheetGrid(doc.width,doc.height,doc.sheet);
+   const grid = spriteSheetGrid(doc.width,doc.height,doc.sheet,doc.sheet.count);
    if (!grid || grid.cols !== doc.sheet.cols || grid.count !== doc.sheet.count) throw Error('Invalid sprite sheet grid');
+  }
+  if (doc.frames != null) {
+   if (!Array.isArray(doc.frames) || doc.frames.length!==spriteFrameCount(doc) ||
+       doc.frames.some(frame=>!idOK(frame?.id) || !validSpriteFrameDuration(frame.duration)) ||
+       new Set(doc.frames.map(frame=>frame.id)).size!==doc.frames.length) throw Error('Invalid sprite timeline');
   }
   const slices = new Set();
   for (const slice of doc.slices) {

@@ -417,3 +417,211 @@ customElements.define('void-sprite-panel',SpritePanel);
 customElements.define('void-sprite-brush',SpriteBrush);
 customElements.define('void-sprite-palette',SpritePalette);
 customElements.define('void-sprite-layers',SpriteLayers);
+
+const timelineColumnWidth=58;
+const timelineLabelWidth=140;
+
+class SpriteTimeline extends LitElement {
+ static properties={
+  model:{attribute:false},playhead:{attribute:false},scrollLeft:{state:true},viewportWidth:{state:true},
+  collapsed:{state:true},dropIndex:{state:true},
+ };
+ static styles=[controls,css`
+  :host { display:block; background:#1b242e; border-top:1px solid #435364; font-size:12px; }
+  :host([hidden]), [hidden] { display:none !important; }
+  .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:6px 8px; border-bottom:1px solid var(--line); }
+  .heading { display:flex; align-items:center; gap:3px; border:0; background:transparent; font-weight:650; }
+  .toolbar label { display:flex; align-items:center; gap:5px; color:var(--sub); }
+  .toolbar input[type=number] { width:61px; }
+  .onion-options { padding:6px 8px; display:flex; flex-wrap:wrap; gap:10px 18px; border-bottom:1px solid var(--line); }
+  .onion-row { display:flex; align-items:center; gap:5px; color:var(--sub); }
+  .onion-row input[type=color] { width:26px; height:24px; padding:1px; }
+  .onion-row input[type=number] { width:48px; }
+  .scroller { max-height:clamp(100px,23vh,228px); min-height:79px; overflow:auto; }
+  .grid { display:grid; grid-template-columns:var(--label) var(--before) repeat(var(--shown),var(--column)) var(--after); width:max-content; }
+  .row { display:contents; }
+  .label,.frame,.cel,.spacer { border:0; border-radius:0; border-right:1px solid #354657; border-bottom:1px solid #354657; }
+  .label { position:sticky; left:0; z-index:1; background:#243240; text-align:left; padding:0 8px; min-width:0; }
+  .label span { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .label[data-current] { background:#30495d; }
+  .grid-header { z-index:2; }
+  .grid-header > * { position:sticky; top:0; z-index:2; background:#2a3745; }
+  .grid-header .label { z-index:3; }
+  .grid-header .label { display:flex; align-items:center; font-size:11px; color:var(--sub); font-weight:650; }
+  .frame { height:39px; cursor:grab; color:var(--text); display:grid; place-content:center; gap:1px; padding:0; }
+  .frame:active { cursor:grabbing; }
+  .frame small { color:var(--sub); font-size:10px; }
+  .frame[data-current] { background:#345269; box-shadow:inset 0 -2px #7daac9; }
+  .frame[data-playing] { background:#31584c; box-shadow:inset 0 -2px var(--accent); }
+  .frame[data-drop] { outline:2px solid var(--accent); outline-offset:-2px; }
+  .cel { background:#202a34; display:grid; place-items:center; height:33px; padding:3px; }
+  .cel[data-current] { background:#345269; box-shadow:inset 0 0 0 1px #83bada; }
+  .cel[data-hidden-layer] { opacity:.54; }
+  .cel canvas { width:32px; height:24px; image-rendering:pixelated; border-radius:2px; pointer-events:none; }
+  .cel canvas[data-empty] { width:13px; height:13px; background:#293846; border:1px solid #415365; }
+  .spacer { pointer-events:none; }
+ `];
+
+ constructor() {
+  super();
+  this.scrollLeft=0;
+  this.viewportWidth=720;
+  this.playhead=null;
+ }
+
+ willUpdate(changes) {
+  if (changes.has('model') && changes.get('model')?.doc!==this.model?.doc) this.scrollLeft=0;
+ }
+
+ updated(changes) {
+  const scroller=this.renderRoot.querySelector('.scroller');
+  if (scroller!==this.scroller) {
+   this.observer??=new ResizeObserver(([entry])=>{
+    if (entry.contentRect.width) this.viewportWidth=entry.contentRect.width;
+   });
+   this.observer.disconnect();
+   if (scroller) this.observer.observe(scroller);
+   this.scroller=scroller;
+  }
+  if (!this.model) return;
+  const previous=changes.get('model');
+  if (changes.has('model')) {
+   if (previous?.doc!==this.model.doc) scroller.scrollLeft=0;
+   const frame=this.model.frame;
+   if (frame!==null && (previous?.frame!==frame || previous?.frames.length!==this.model.frames.length)) {
+    const start=frame*timelineColumnWidth, end=start+timelineColumnWidth;
+    const width=Math.max(timelineColumnWidth,scroller.clientWidth-timelineLabelWidth);
+    if (start<scroller.scrollLeft) scroller.scrollLeft=start;
+    else if (end>scroller.scrollLeft+width) scroller.scrollLeft=end-width;
+   }
+  }
+  if (['model','scrollLeft','viewportWidth','collapsed'].some(property=>changes.has(property))) this.paintThumbnails();
+ }
+
+ paintThumbnails() {
+  const {layers,boxes}=this.model;
+  const sources=new Map(layers.map(layer=>[layer.id,layer.canvas]));
+  for (const thumb of this.renderRoot.querySelectorAll('canvas[data-frame]')) {
+   const source=sources.get(thumb.dataset.layer), box=boxes[Number(thumb.dataset.frame)];
+   const context=thumb.getContext('2d',{willReadFrequently:true});
+   context.clearRect(0,0,32,24);
+   if (source && box) {
+    const scale=Math.min(32/box.w,24/box.h);
+    const w=Math.max(1,Math.round(box.w*scale)), h=Math.max(1,Math.round(box.h*scale));
+    context.imageSmoothingEnabled=false;
+    context.drawImage(source,box.x,box.y,box.w,box.h,(32-w)/2,(24-h)/2,w,h);
+   }
+   const pixels=context.getImageData(0,0,32,24).data;
+   thumb.toggleAttribute('data-empty',!pixels.some((channel,i)=>i%4===3 && channel));
+  }
+ }
+
+ command(command,detail={}) {
+  send(this,'timeline',{command,...detail});
+ }
+
+ startDrag(event,index) {
+  this.dragged=index;
+  event.dataTransfer.effectAllowed='move';
+  event.dataTransfer.setData('text/plain',String(index));
+ }
+
+ dragOver(event,index) {
+  if (!Number.isInteger(this.dragged) || this.dragged===index) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect='move';
+  this.dropIndex=index;
+ }
+
+ dropFrame(event,index) {
+  if (!Number.isInteger(this.dragged)) return;
+  event.preventDefault();
+  this.command('move',{from:this.dragged,to:index});
+  this.clearDrag();
+ }
+
+ clearDrag() {
+  this.dragged=null;
+  this.dropIndex=null;
+ }
+
+ renderOnion(settings) {
+  return html`<div class="onion-options">
+   ${Object.entries(settings).map(([side,{enabled,color,opacity}])=>{
+    const label=side==='previous'?'Previous':'Next';
+    const set=(key,value)=>this.command('onionSetting',{side,key,value});
+    return html`<div class="onion-row">
+     <label><input type="checkbox" .checked=${live(enabled)} @change=${event=>set('enabled',event.target.checked)}> ${label}</label>
+     <input type="color" aria-label=${label+' onion color'} .value=${live(color)} @change=${event=>set('color',event.target.value)}>
+     <label><input type="number" aria-label=${label+' onion opacity (%)'} min="0" max="100"
+      .value=${live(String(opacity))} @change=${event=>set('opacity',event.target.value)}> %</label>
+    </div>`;
+   })}
+  </div>`;
+ }
+
+ renderGrid(model) {
+  const {frames,layers,frame,layer}=model;
+  const first=Math.min(frames.length-1,Math.floor((this.scrollLeft??0)/timelineColumnWidth));
+  const start=Math.max(0,first-2);
+  const end=Math.min(frames.length,first+Math.ceil(this.viewportWidth/timelineColumnWidth)+3);
+  const window=frames.slice(start,end).map((entry,offset)=>({...entry,index:start+offset}));
+  const style={'--label':timelineLabelWidth+'px','--column':timelineColumnWidth+'px','--before':start*timelineColumnWidth+'px',
+   '--after':(frames.length-end)*timelineColumnWidth+'px','--shown':String(window.length)};
+  return html`<div class="grid" style=${styleMap(style)}>
+   <div class="row grid-header">
+    <div class="label">Layers</div><div class="spacer"></div>
+    ${repeat(window,item=>item.id,item=>html`<button class="frame" type="button" draggable="true"
+     aria-label=${'Frame '+(item.index+1)+', '+item.duration+' ms'} aria-pressed=${item.index===frame}
+     ?data-current=${item.index===frame} ?data-playing=${item.index===this.playhead} ?data-drop=${item.index===this.dropIndex}
+     @click=${()=>this.command('select',{index:item.index})} @dragstart=${event=>this.startDrag(event,item.index)}
+     @dragover=${event=>this.dragOver(event,item.index)} @drop=${event=>this.dropFrame(event,item.index)} @dragend=${this.clearDrag}>
+     <span>${item.index+1}</span><small>${item.duration} ms</small></button>`)}
+    <div class="spacer"></div>
+   </div>
+   ${repeat([...layers].reverse(),row=>row.id,row=>html`<div class="row">
+    <button class="label" title=${row.name+(row.locked?' · locked':'')+(row.visible?'':' · hidden')} type="button" ?data-current=${row.id===layer}
+     @click=${()=>this.command('select',{layer:row.id,index:frame??0})}><span>${row.name}</span></button><div class="spacer"></div>
+    ${repeat(window,item=>item.id,item=>html`<button class="cel" type="button" aria-label=${row.name+', frame '+(item.index+1)}
+     aria-pressed=${item.index===frame && row.id===layer} ?data-current=${item.index===frame && row.id===layer}
+     ?data-hidden-layer=${!row.visible}
+     @click=${()=>this.command('select',{layer:row.id,index:item.index})}>
+     <canvas width="32" height="24" data-frame=${item.index} data-layer=${row.id} aria-hidden="true"></canvas></button>`)}
+    <div class="spacer"></div>
+   </div>`)}
+  </div>`;
+ }
+
+ render() {
+  const model=this.model;
+  if (!model) return html`<div class="scroller" hidden></div>`;
+  const {frames,frame,ready,onion,onionSettings}=model, current=frame??0;
+  const button=(title,command,disabled=false)=>html`<button type="button" ?disabled=${disabled}
+   @click=${()=>this.command(command)}>${title}</button>`;
+  return html`<div class="toolbar">
+   <button type="button" class="heading" aria-expanded=${!this.collapsed}
+    @click=${()=>{this.collapsed=!this.collapsed;}}>${icon(this.collapsed?'expand':'collapse')} Timeline</button>
+   ${button(this.playhead!==null?'Pause':'Play','play',!ready || frames.length<2)}
+   ${!this.collapsed ? html`
+    ${button('+ Frame','add',!ready || frames.length>=4096)}
+    ${button('Duplicate frame','duplicate',!ready || frames.length>=4096)}
+    <button type="button" aria-label="Move frame left" title="Move frame left" ?disabled=${!ready || current===0}
+     @click=${()=>this.command('move',{from:current,to:current-1})}>←</button>
+    <button type="button" aria-label="Move frame right" title="Move frame right" ?disabled=${!ready || current===frames.length-1}
+     @click=${()=>this.command('move',{from:current,to:current+1})}>→</button>
+    ${button('Delete frame','delete',!ready || frames.length<2)}
+    <label>Duration <input type="number" aria-label="Frame duration (ms)" min="1" max="60000" step="1"
+     .value=${live(String(frames[current].duration))} @change=${event=>this.command('duration',{value:event.target.value})}> ms</label>
+    <label><input type="checkbox" data-field="sprite.onion" .checked=${live(onion)}
+     @change=${event=>this.command('onion',{value:event.target.checked})}> Onion skin</label>
+   ` : nothing}
+  </div>
+  ${!this.collapsed && onion ? this.renderOnion(onionSettings) : nothing}
+  <div class="scroller" ?hidden=${this.collapsed}
+   @scroll=${event=>{ this.scrollLeft=event.currentTarget.scrollLeft; }}>
+   ${this.renderGrid(model)}
+  </div>`;
+ }
+}
+
+customElements.define('void-sprite-timeline',SpriteTimeline);

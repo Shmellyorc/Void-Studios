@@ -237,6 +237,7 @@ function spriteControlAction(event) {
  const details=event.detail, {action}=details, doc=currentSprite(), state=spriteWorkspace;
  if (tab!=='sprite') return;
  if (action==='panel') return changeSpritePanel(details.id,details.command);
+ if (action==='timeline') return spriteTimelineAction(details.command,details);
  if (!doc) return;
  switch (action) {
  case 'brushSize': state.size=Math.max(1,Math.min(16,Math.round(Number(details.value)||1))); updateSpriteControls(doc); break;

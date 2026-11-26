@@ -58,6 +58,7 @@ function newSpriteDocument(name,width,height,sheet = null) {
 }
 
 function selectSpriteDocument(doc) {
+ stopSpriteTimeline(false);
  Object.assign(spriteWorkspace,{ document:doc?.id,frame:null,layer:null,slice:null,mask:null,gesture:null,status:'' });
  spriteWorkspace.surfaces.clear();
  spriteWorkspace.zoom = resetSpriteZoom();
@@ -95,9 +96,9 @@ function syncSpriteSurfaces(doc) {
   const image = new Image();
   image.onload = () => {
    if (spriteWorkspace.surfaces.get(layer.id) !== record) return;
-  canvas.getContext('2d',{willReadFrequently:true}).drawImage(image,0,0);
+   canvas.getContext('2d',{willReadFrequently:true}).drawImage(image,0,0);
    record.ready = true;
-   if (tab === 'sprite') drawSpriteEditor();
+   if (tab === 'sprite') { drawSpriteEditor(); updateSpriteTimeline(); }
   };
   image.onerror = () => {
    if (spriteWorkspace.surfaces.get(layer.id) !== record) return;
@@ -156,10 +157,7 @@ function commitSpritePixels(layer) {
  });
 }
 
-function spriteStageSize() {
- const doc = currentSprite();
- if (!doc) return;
- const area = spriteFrameBounds(doc,spriteWorkspace.frame);
+function spriteStageSize(area) {
  const stage = $('#sprite-stage');
  stage.style.setProperty('--sprite-pixel',spriteWorkspace.zoom+'px');
  stage.style.width = area.w*spriteWorkspace.zoom+'px';
@@ -170,19 +168,25 @@ function spriteStageSize() {
 function drawSpriteEditor(cursor) {
  const doc = currentSprite();
  if (!doc) return;
- const area = spriteFrameBounds(doc,spriteWorkspace.frame);
- const canvas = $('#sprite-canvas'), guides = $('#sprite-guides'), frame = spriteWorkspace.frame;
+ const playing=spritePlayback.frame!==null;
+ const frame=spritePlayback.frame??spriteWorkspace.frame;
+ const area = spriteFrameBounds(doc,frame);
+ const canvas = $('#sprite-canvas'), guides = $('#sprite-guides');
  for (const target of [canvas,guides]) {
   if (target.width !== area.w) target.width = area.w;
   if (target.height !== area.h) target.height = area.h;
  }
- spriteStageSize();
+ spriteStageSize(area);
  const context = canvas.getContext('2d');
  context.clearRect(0,0,area.w,area.h);
- if (spriteWorkspace.onion && frame != null && frame > 0) drawSpriteLayers(context,spriteFrameBounds(doc,frame-1),0,0,.22);
+ if (!playing) drawSpriteOnion(context,doc,frame);
  drawSpriteLayers(context,area);
  const outline = guides.getContext('2d');
  outline.clearRect(0,0,area.w,area.h);
+ if (playing) {
+  $('#sprite-status').textContent='Playing · Frame '+(frame+1)+' / '+spriteFrameCount(doc);
+  return;
+ }
  const highlight = spriteWorkspace.mask;
  if (highlight) {
   const overlay = outline.createImageData(area.w,area.h);
@@ -241,11 +245,22 @@ function spriteToolFields() {
 
 function renderSpriteEditor() {
  if (spriteWorkspace.project !== P) {
+  stopSpriteTimeline(false);
+  const previous=spriteWorkspace.project?.spriteDocuments?.find(doc=>doc.id===spriteWorkspace.document);
+  const frame=spriteWorkspace.frame;
   spriteWorkspace.project = P;
   const doc = currentSprite();
   if (doc) {
-   if (!doc.sheet || spriteWorkspace.frame >= doc.sheet.count) spriteWorkspace.frame = null;
-   if (spriteWorkspace.mask?.length !== doc.width*doc.height) spriteWorkspace.mask = null;
+   if (frame!==null) {
+    const last=previous && spriteTimelineFrames(previous)[frame]?.id;
+    const index=last? spriteTimelineFrames(doc).findIndex(item=>item.id===last) : -1;
+    spriteWorkspace.frame=index>=0?index:Math.min(frame,spriteFrameCount(doc)-1);
+    const oldArea=previous && spriteFrameBounds(previous,frame), newArea=spriteFrameBounds(doc,spriteWorkspace.frame);
+    if (!oldArea || Object.keys(newArea).some(key=>oldArea[key]!==newArea[key])) spriteWorkspace.mask=null;
+   }
+   if (previous?.width!==doc.width || previous?.height!==doc.height || spriteWorkspace.mask?.length!==doc.width*doc.height) {
+    spriteWorkspace.mask=null;
+   }
    spriteWorkspace.gesture = null;
   } else selectSpriteDocument(P.spriteDocuments?.[0]);
  }
@@ -266,6 +281,7 @@ function renderSpriteEditor() {
  renderSpritePanelLayout(doc);
  if (!doc) {
   updateSpriteControls(doc);
+  updateSpriteTimeline(null);
   $('#sprite-frames').innerHTML = '';
   $('#sprite-status').textContent = '';
   return;
@@ -276,7 +292,7 @@ function renderSpriteEditor() {
  $('#sprite-frames').innerHTML = button('Frame Grid…','sprite:gridDialog') + (doc.sheet ?
   select('View','sprite.view',spriteWorkspace.frame == null ? 'sheet' : 'frame',[['sheet','Sheet'],['frame','Frame']]) +
   (spriteWorkspace.frame == null ? '' : button('‹','sprite:prev') + field('Frame','sprite.frame',spriteWorkspace.frame+1,'number') +
-   button('›','sprite:next') + button('Copy Previous','sprite:previousPixels') + checkbox('Onion skin','sprite.onion',spriteWorkspace.onion)) : '') +
+   button('›','sprite:next') + button('Copy Previous','sprite:previousPixels')) : '') +
   checkbox('Pixel grid','sprite.grid',spriteWorkspace.grid) + (doc.sheet ? checkbox('Frame guides','sprite.frameGrid',spriteWorkspace.frameGrid) : '');
  const targets = spriteTargets(doc).map(type => type.name).join(', ');
  $('#sprite-slices').innerHTML = '<div class="prop-group">' +
@@ -288,6 +304,7 @@ function renderSpriteEditor() {
    (targets ? '<p class="muted">Linked to ' + esc(targets) + '</p>' : '') +
    button('Resize Canvas…','sprite:resize') + button('Delete Sprite','sprite:remove','danger ghost') + '</div>';
  updateSpriteControls(doc);
+ updateSpriteTimeline(doc);
  drawSpriteEditor();
 }
 
@@ -324,12 +341,15 @@ function spriteGridDialog(doc) {
  const values = [['w','Frame width',previous?.w ?? doc.width],['h','Frame height',previous?.h ?? doc.height],
   ['margin','Margin',previous?.margin ?? 0],['spacing','Spacing',previous?.spacing ?? 0]];
  simple('Frame Grid','<div class="two">'+values.map(([key,label,value]) => field(label,key,value,'number')).join('')+'</div>',fields => {
-  const grid = spriteSheetGrid(doc.width,doc.height,Object.fromEntries(values.map(([key])=>[key,Number(fields[key])])));
+  const settings={...previous,...Object.fromEntries(values.map(([key])=>[key,Number(fields[key])]))};
+  const grid = spriteFrameGridForEdit(doc,doc.width,doc.height,settings);
   if (!grid) throw Error('The grid must fit the image and contain 1–4096 frames');
   const targets = spriteTargets(doc);
   if (targets.some(type => !spriteClipGridCompatible(type,grid))) throw Error('This grid would remap frames used by an animation clip');
+  const frames=spriteTimelineForGrid(doc,doc.width,doc.height,grid);
   change(() => {
    doc.sheet = grid;
+   if (frames) doc.frames=frames;
    for (const type of targets) spriteApplyGrid(type,doc);
    spriteWorkspace.frame = null;
    spriteWorkspace.mask = null;
@@ -344,11 +364,12 @@ function spriteResizeDialog(doc) {
   const width=Number(values.w), height=Number(values.h);
   if (!validSpriteSize(width,height)) throw Error('Use a canvas up to 4096 pixels on either side and up to 4,194,304 pixels total');
   if (width===doc.width && height===doc.height) return;
-  const grid=doc.sheet ? spriteSheetGrid(width,height,doc.sheet) : null;
+  const grid=doc.sheet ? spriteFrameGridForEdit(doc,width,height,doc.sheet) : null;
   if (doc.sheet && !grid) throw Error('The current frame grid must fit the resized canvas');
   if (doc.slices.some(slice=>!spriteContainsBox({width,height},slice))) throw Error('Adjust slices that extend outside the new canvas');
   const targets=spriteTargets(doc);
   if (targets.some(type=>!spriteClipGridCompatible(type,grid))) throw Error('This resize would remap frames used by an animation clip');
+  const frames=spriteTimelineForGrid(doc,width,height,grid);
   const layers=spriteLayers(doc).map(layer=>{
    const canvas=spriteCanvas(width,height);
    canvas.getContext('2d',{willReadFrequently:true}).drawImage(spriteWorkspace.surfaces.get(layer.id).canvas,0,0);
@@ -356,13 +377,14 @@ function spriteResizeDialog(doc) {
   });
   change(()=>{
    Object.assign(doc,{width,height,sheet:grid});
+   if (frames) doc.frames=frames;
    for (const {layer,canvas,source} of layers) {
     layer.image=source;
     spriteWorkspace.surfaces.set(layer.id,{canvas,source,ready:true});
    }
    for (const type of targets) spriteApplyGrid(type,doc);
    setSpriteArtwork(doc);
-   if (spriteWorkspace.frame >= (grid?.count ?? 0)) spriteWorkspace.frame=null;
+   if (spriteWorkspace.frame >= spriteFrameCount(doc)) spriteWorkspace.frame=null;
    spriteWorkspace.mask=null;
    spriteWorkspace.zoom=resetSpriteZoom();
   });
@@ -391,7 +413,7 @@ async function editObjectSprite(type = animatorType()) {
   await image.decode();
   if (P !== project || !P.types.includes(type) || type.image !== source) return;
   const width=image.naturalWidth,height=image.naturalHeight;
-  const grid = type.sheet ? spriteSheetGrid(width,height,type.sheet) : null;
+  const grid = type.sheet ? spriteSheetGrid(width,height,type.sheet,type.sheet.count) : null;
   if (type.sheet && !grid) throw Error('The sheet grid does not fit the image');
   createSpriteDocument(newSpriteDocument(type.name,width,height,grid),source,type);
  } catch (error) { alert(error.message); }
@@ -434,7 +456,8 @@ function spriteSliceDialog(doc,box,previous = null) {
 
 function spriteSetFrame(index) {
  const doc=currentSprite();
- const next=index==null || !doc?.sheet ? null : Math.max(0,Math.min(doc.sheet.count-1,index));
+ stopSpriteTimeline();
+ const next=index==null || !doc ? null : Math.max(0,Math.min(spriteFrameCount(doc)-1,index));
  const changesView=(spriteWorkspace.frame===null)!==(next===null);
  if (next===spriteWorkspace.frame) return;
  spriteWorkspace.frame=next;
@@ -535,6 +558,8 @@ function spriteSelectionAction(action,doc) {
 
 function spriteEditorAction(action,id) {
  const doc=currentSprite(), layer=selectedSpriteLayer(), slice=selectedSpriteSlice();
+ if (action==='timeline') return spriteTimelineAction(id);
+ stopSpriteTimeline();
  if (action==='new') return spriteNewDialog();
  if (action==='panel') return changeSpritePanel(id,id==='reset'?'reset':'hide');
  if (action==='import' || action==='importLayer') {
@@ -572,7 +597,7 @@ function spriteEditorAction(action,id) {
  case 'mirrorX': case 'mirrorY':
   spriteWorkspace[action]=!spriteWorkspace[action];updateSpriteControls(doc);renderStudioMenu();break;
  case 'layer':
-  if (spriteLayers(doc).some(item=>item.id===id)) { spriteWorkspace.layer=id;updateSpriteControls(doc); }
+  if (spriteLayers(doc).some(item=>item.id===id)) { spriteWorkspace.layer=id;updateSpriteControls(doc);updateSpriteTimeline(doc); }
   break;
  case 'addLayer': change(()=>{
   const next=makeSpriteLayer(doc,'Layer '+(spriteLayers(doc).length+1));
@@ -720,6 +745,11 @@ function setupSpriteStage() {
  stage.addEventListener('pointerdown',event=>{
   const doc=currentSprite(), state=spriteWorkspace;
   if (!doc || state.gesture || ![0,1,2].includes(event.button)) return;
+  if (spritePlayback.raf) {
+   event.preventDefault();
+   stopSpriteTimeline();
+   return;
+  }
   const area=spriteFrameBounds(doc,state.frame), point=pointAt(event,area), tool=state.tool;
   const button=event.button===2 ? 'right' : 'left', ink=state.paint[button];
   const sampling=tool==='eyedropper' || event.altKey && (button==='right' || !spriteSelectionTools.has(tool));
@@ -765,7 +795,7 @@ function setupSpriteStage() {
  });
  stage.addEventListener('pointermove',event=>{
   const gesture=spriteWorkspace.gesture, doc=currentSprite();
-  if (!doc) return;
+  if (!doc || spritePlayback.raf) return;
   if (!gesture) {
    const point=pointAt(event,spriteFrameBounds(doc,spriteWorkspace.frame));
    $('#sprite-status').textContent='X '+point.x+' · Y '+point.y+' · '+Math.round(spriteWorkspace.zoom*100)+'%';
