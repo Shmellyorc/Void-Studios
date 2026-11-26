@@ -11,11 +11,15 @@ Install Node.js 24 and run `npm ci`. Then choose how to launch the editor.
 - **Browser** — Run `npm run build`, then open `dist/VOID-Studio.html`.
 - **Desktop** — Run `npm start` to open the same editor in Electron.
 
-Use **Play** to preview a layout, **Save** to download project JSON, and
+Use **Play** to preview a layout, **Save project** to download a `.void` file, and
 **Export HTML** to create a standalone game. Preview and export bundle PixiJS
 locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailable.
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
+
+The `.void` format stores sprite and tileset images as binary data and stores
+identical embedded images once. A saved project is self-contained. **Open**
+also reads older `.void.json` projects. Save one again to convert it to `.void`.
 
 ## Tilemaps and project enums
 

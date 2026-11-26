@@ -1,0 +1,120 @@
+const projectFileMagic = Uint8Array.of(86,79,73,68,80,82,74); // VOIDPRJ
+const projectFileVersion = 1;
+const projectFileHeaderSize = 12;
+const projectImagePrefix = /^data:image\/[a-z0-9.+-]+;base64,/i;
+const projectImageCollections = ['types','tilesets'];
+
+function projectImageBytes(encoded) {
+ if (Uint8Array.fromBase64) return Uint8Array.fromBase64(encoded, { lastChunkHandling: 'strict' });
+ const text = atob(encoded);
+ const bytes = new Uint8Array(text.length);
+ for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index);
+ return bytes;
+}
+
+function projectImageBase64(bytes) {
+ if (bytes.toBase64) return bytes.toBase64();
+ const chunks = [];
+ // Multiples of three keep padding at the end of the complete image.
+ const chunkSize = 0x6000;
+ for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+  chunks.push(btoa(String.fromCharCode(...bytes.subarray(offset,offset+chunkSize))));
+ }
+ return chunks.join('');
+}
+
+function encodeProjectFile(project) {
+ const data = { ...project };
+ const images = [], imageBytes = [], references = {};
+ const known = new Map();
+ for (const key of projectImageCollections) {
+  if (!Array.isArray(project[key])) continue;
+  const links = [];
+  data[key] = project[key].map((item,index) => {
+   const image = item?.image;
+   if (typeof image !== 'string') return item;
+   let id = known.get(image);
+   if (id === undefined) {
+    const prefix = image.match(projectImagePrefix)?.[0];
+    if (!prefix) return item;
+    const encoded = image.slice(prefix.length);
+    if (encoded.length % 4 || /\s/.test(encoded)) return item;
+    let bytes;
+    try {
+     // Keep noncanonical legacy data URLs intact in the metadata.
+     const tail = encoded.slice(-4);
+     if (btoa(atob(tail)) !== tail) return item;
+     bytes = projectImageBytes(encoded);
+    } catch { return item; }
+    id = images.length;
+    known.set(image,id);
+    images.push({ prefix, length: bytes.byteLength });
+    imageBytes.push(bytes);
+   }
+   links.push([index,id]);
+   const { image: omitted, ...metadata } = item;
+   return metadata;
+  });
+  references[key] = links;
+ }
+ const metadata = new TextEncoder().encode(JSON.stringify({ project: data, images, references }));
+ if (metadata.byteLength > 0xffffffff) throw Error('Project metadata is too large to save');
+ const header = new Uint8Array(projectFileHeaderSize);
+ header.set(projectFileMagic);
+ header[7] = projectFileVersion;
+ new DataView(header.buffer).setUint32(8,metadata.byteLength,true);
+ return new Blob([header,metadata,...imageBytes],{ type: 'application/octet-stream' });
+}
+
+function decodeProjectFile(buffer) {
+ if (buffer.byteLength < projectFileHeaderSize) throw Error('The VOID project file is incomplete');
+ const metadataEnd = projectFileHeaderSize + new DataView(buffer).getUint32(8,true);
+ if (metadataEnd > buffer.byteLength) throw Error('The VOID project metadata is incomplete');
+ let metadata;
+ try {
+  const encoded = new Uint8Array(buffer,projectFileHeaderSize,metadataEnd-projectFileHeaderSize);
+  metadata = JSON.parse(new TextDecoder('utf-8',{ fatal: true }).decode(encoded));
+ } catch { throw Error('The VOID project metadata is invalid'); }
+ const { project, images, references } = metadata ?? {};
+ if (!project || typeof project !== 'object' || Array.isArray(project) ||
+     !Array.isArray(images) || !references || typeof references !== 'object') {
+  throw Error('The VOID project metadata is invalid');
+ }
+
+ let offset = metadataEnd;
+ const assets = images.map(asset => {
+  const { prefix, length } = asset ?? {};
+  if (typeof prefix !== 'string' || prefix.match(projectImagePrefix)?.[0] !== prefix ||
+      !Number.isSafeInteger(length) || length < 0 || length > buffer.byteLength-offset) {
+   throw Error('The VOID project contains an invalid image');
+  }
+  const bytes = new Uint8Array(buffer,offset,length);
+  offset += length;
+  return { prefix, bytes };
+ });
+ if (offset !== buffer.byteLength) throw Error('The VOID project contains unexpected data');
+ for (const key of projectImageCollections) {
+  const links = references[key] ?? [];
+  if (!Array.isArray(links)) throw Error('The VOID project has invalid image references');
+  for (const link of links) {
+   if (!Array.isArray(link) || link.length !== 2) throw Error('The VOID project has an invalid image reference');
+   const [index,id] = link;
+   const item = Array.isArray(project[key]) && Number.isSafeInteger(index) && index >= 0 ? project[key][index] : null;
+   const asset = Number.isSafeInteger(id) && id >= 0 ? assets[id] : null;
+   if (!item || typeof item !== 'object' || Array.isArray(item) || Object.hasOwn(item,'image') || !asset) {
+    throw Error('The VOID project has an invalid image reference');
+   }
+   asset.url ??= asset.prefix + projectImageBase64(asset.bytes);
+   item.image = asset.url;
+  }
+ }
+ return project;
+}
+
+async function openProjectFile(file) {
+ const header = new Uint8Array(await file.slice(0,projectFileMagic.length+1).arrayBuffer());
+ if (!projectFileMagic.every((byte,index) => header[index] === byte)) return JSON.parse(await file.text());
+ if (header.length < projectFileMagic.length+1) throw Error('The VOID project file is incomplete');
+ if (header[7] !== projectFileVersion) throw Error('Unsupported VOID project file version ' + header[7]);
+ return decodeProjectFile(await file.arrayBuffer());
+}
