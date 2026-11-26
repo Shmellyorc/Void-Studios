@@ -191,10 +191,6 @@ function renderUIWorkspace() {
  }
  const screen = currentUIScreen(), selection = selectedUIControls(), item = selection[0];
  const entries = uiSelectionRoots(model);
- $('#ui-layouts').innerHTML = P.layouts.map(layout =>
-  `<button class="tree prefab-tree ${layout.id === L().id ? 'selected' : ''}" data-act="ui:layout:${esc(layout.id)}">${esc(layout.name)}</button>`).join('');
- $('#ui-screens').innerHTML = uiScreenOptions().map(([id,name]) =>
-  `<button class="tree prefab-tree ${id === screen?.id ? 'selected' : ''}" data-act="ui:screen:${esc(id)}">${esc(name)}</button>`).join('');
  $('#ui-hierarchy').innerHTML = uiHierarchyMarkup(model,entries);
  $('#ui-tools').innerHTML = button('+ Screen','ui:newScreen','primary') + (screen ?
   button('+ Panel','ui:add:panel') + button('+ Button','ui:add:button') + button('+ Label','ui:add:label') +
@@ -352,23 +348,17 @@ function studioUIAction(action, value) {
   });
   return;
  }
- if (action === 'screen') {
-  uiWorkspace.screen = value;
-  uiWorkspace.selection.clear();
-  return renderUIWorkspace();
- }
- if (action === 'layout') {
-  P.activeLayout = value;
-  if (L().uiScreen) uiWorkspace.screen = L().uiScreen;
-  uiWorkspace.selection.clear();
-  selected = null;
-  return render();
- }
  if (action === 'newScreen') return simple('New UI Screen',field('Name','name','Screen ' + ((P.uiScreens?.length ?? 0) + 1)),values => {
   const name = values.name.trim().slice(0,100);
   if (!name) throw Error('Enter a screen name');
   const next = { id:uid(),name,items:[] };
-  change(() => { (P.uiScreens ??= []).push(next); uiWorkspace.screen = next.id; uiWorkspace.selection.clear(); });
+  change(() => {
+   (P.uiScreens ??= []).push(next);
+   Object.assign(uiWorkspace,{ project:P, screen:next.id, gesture:null });
+   uiWorkspace.selection.clear();
+   tab = 'ui';
+   revealProjectItem('screen:' + next.id,'screens');
+  });
  });
  if (!screen) return;
  switch (action) {

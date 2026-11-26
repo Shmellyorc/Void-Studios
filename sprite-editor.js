@@ -67,6 +67,12 @@ function selectSpriteDocument(doc) {
 function createSpriteDocument(doc,image = '',type = null) {
  change(() => {
   (P.spriteDocuments ??= []).push(doc);
+  if (type && P.projectTree?.locations['image:' + type.id]) {
+   const folder = P.projectTree.locations['image:' + type.id];
+   delete P.projectTree.locations['image:' + type.id];
+   P.projectTree.locations['sprite:' + doc.id] = folder;
+   revealProjectItem('sprite:' + doc.id,folder);
+  } else revealProjectItem('sprite:' + doc.id,'assets');
   const layer = makeSpriteLayer(doc,image ? 'Artwork' : 'Layer 1',image);
   (P.spriteLayers ??= []).push(layer);
   if (type) type.spriteDocument = doc.id;
@@ -266,8 +272,6 @@ function renderSpriteEditor() {
  }
  const doc = currentSprite();
  $('#layoutlabel').textContent = doc?.name ?? '';
- $('#sprite-documents').innerHTML = (P.spriteDocuments ?? []).map(item =>
-  `<button class="tree prefab-tree ${item === doc ? 'selected' : ''}" data-act="sprite:document:${item.id}">${esc(item.name)}</button>`).join('');
  $('#sprite-tools').innerHTML = doc ? spriteTools.map(([key,label,shortcut,drawing]) =>
   `<button data-act="sprite:tool:${key}" class="${key === spriteWorkspace.tool ? 'active' : ''}" aria-pressed="${key === spriteWorkspace.tool}"
    aria-label="${label}" title="${label} (${shortcut})">${spriteToolIcon(drawing)}</button>`).join('') : '';
@@ -568,10 +572,6 @@ function spriteEditorAction(action,id) {
   return;
  }
  if (action==='editObject') return editObjectSprite();
- if (action==='document') {
-  selectSpriteDocument(P.spriteDocuments.find(item=>item.id===id));
-  return renderSpriteEditor();
- }
  if (!doc) return;
  switch (action) {
  case 'tool': spriteTool(id); break;

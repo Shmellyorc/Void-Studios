@@ -95,14 +95,14 @@ function sheetIncludes(source,id,visited=new Set()) {
 
 function renderEventToolbar() {
  const source=editorEventSheet();
- const sources=eventSheetSources(P), captions={layout:'Layout',shared:'Shared',behavior:'Behavior'};
+ const sources=eventSheetSources(P), captions={layout:'Scene',shared:'Shared',behavior:'Behavior'};
  $('#event-sheet-choice').innerHTML=select('Sheet','event-sheet',sheetKey(source),
   sources.map(item=>[sheetKey(item),captions[item.kind]+' · '+item.name]));
  $('#event-sheet-settings').innerHTML=source.kind==='shared'
   ? button('Rename','evt:renameSheet')+button('Delete sheet','evt:deleteSheet','danger ghost') : '';
  $('#event-include').disabled=source.kind==='behavior' || !P.eventSheets?.some(sheet=>sheet.id!==source.id);
  $('#event-layout-assignment').innerHTML=select(L().name+' runs','event-layout-sheet',L().eventSheet??'',
-  [['','Layout sheet'],...(P.eventSheets??[]).map(sheet=>[sheet.id,sheet.name])]);
+  [['','Scene sheet'],...(P.eventSheets??[]).map(sheet=>[sheet.id,sheet.name])]);
  if (tab==='events') $('#layoutlabel').textContent=source.name;
 }
 
@@ -216,6 +216,7 @@ function eventWorkspaceAction(action,id,...args) {
      const sheet={id:uid(),name,events:[]};
      (P.eventSheets??=[]).push(sheet);
      openSheetId=null;eventWorkspace.focus='shared:'+sheet.id;tab='events';
+     revealProjectItem('shared:' + sheet.id,'sheets');
     }
    });
   });

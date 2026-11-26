@@ -1,6 +1,6 @@
-const spritePanelLabels={ palette:'Palette', documents:'Sprites', slices:'Slices', tools:'Tools', layers:'Layers', properties:'Sprite Properties' };
+const spritePanelLabels={ palette:'Palette', slices:'Slices', tools:'Tools', layers:'Layers', properties:'Sprite Properties' };
 const spritePanelDefaults={
- palette:{side:'left',order:0},documents:{side:'left',order:1},slices:{side:'left',order:2},
+ palette:{side:'left',order:0},slices:{side:'left',order:2},
  tools:{side:'right',order:0},layers:{side:'right',order:1},properties:{side:'right',order:2},
 };
 const spriteBuiltInPalettes=[
@@ -37,7 +37,7 @@ function spritePanelsOnSide(side) {
 function renderSpritePanelLayout(doc) {
  for (const [side,root] of [['left',$('#sprite-sidebar')],['right',$('#sprite-inspector')]]) {
   const ids=spritePanelsOnSide(side);
-  const visible=ids.filter(id=>!spritePreferences.panels[id].hidden && (doc || id==='documents'));
+  const visible=doc ? ids.filter(id=>!spritePreferences.panels[id].hidden) : [];
   root.toggleAttribute('data-empty',!visible.length);
   ids.forEach((id,index)=>{
    const panel=document.getElementById('sprite-panel-'+id);

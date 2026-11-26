@@ -91,7 +91,9 @@ async function importAudioFiles(files) {
    haltAudioAudition();
    change(() => {
     (P.audioClips ??= []).push(...imported);
-    audioWorkspace.clip = imported[0].id;
+    Object.assign(audioWorkspace,{ project:P,clip:imported[0].id });
+    tab = 'audio';
+    revealProjectItem('audio:' + imported[0].id,'assets');
    });
   }
  } finally {
@@ -112,6 +114,7 @@ function studioAudioAction(action, id) {
   haltAudioAudition(true);
   audioWorkspace.clip = id;
   renderAudioWorkspace();
+  projectTreeSelection();
  } else if (action === 'audition' && clip) {
   if (audioWorkspace.preview) haltAudioAudition(true);
   else {

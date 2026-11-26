@@ -21,14 +21,6 @@ function studioBlockCatalog(kind, behavior, project) {
  ])) };
 }
 
-function renderPrefabList() {
- if (componentSelection.layout !== L()) clearComponentSelection();
- $('#prefabs').innerHTML = (P.prefabs ?? []).map(prefab =>
-  `<button class="tree prefab-tree ${prefab.id === componentSelection.prefab ? 'selected' : ''}"
-   data-act="prefab:select:${esc(prefab.id)}">${esc(prefab.name)}<small>${prefab.members.length}</small></button>`).join('');
- $('#create-prefab').disabled = !I() && !componentSelection.members.size;
-}
-
 function prefabProperties() {
  const placement = selectedPrefabPlacement();
  const prefab = P.prefabs?.find(asset => asset.id === componentSelection.prefab);
@@ -60,6 +52,7 @@ function createPrefab() {
   if (!prefab.name) throw Error('Enter a prefab name');
   change(() => {
    (P.prefabs ??= []).push(prefab);
+   revealProjectItem('prefab:' + prefab.id,'prefabs');
    if ($('[data-field="prefab-replace"]').checked) {
     L().instances = L().instances.filter(object => !members.includes(object));
     placePrefab(prefab, x, y);

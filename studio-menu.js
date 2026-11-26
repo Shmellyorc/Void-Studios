@@ -1,11 +1,11 @@
 const workspaceTabs = [
- ['layout','Layout','layouttab'], ['events','Event Sheet','eventtab'], ['tiles','Tilemap','tiletab'],
+ ['layout','Scene','layouttab'], ['events','Event Sheet','eventtab'], ['tiles','Tilemap','tiletab'],
  ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'], ['sprite','Sprite','spritetab'],
 ];
 const studioWorkspaceCommands = {
  layout: [
-  ['Layout',[['Add Layout…','addLayout'],['Camera Settings…','cameraSettings']]],
-  ['Objects',[['Add Object Type…','addType'],['Place Instance','place'],['Create Prefab…','prefab:create']]],
+  ['Scene',[['New Scene…','addLayout'],['Camera Settings…','cameraSettings']]],
+  ['Objects',[['New Object…','addType'],['Place Instance','place'],['Create Prefab…','prefab:create']]],
  ],
  events: [
   ['Event Sheet',[['New Sheet…','evt:newSheet'],['Add Event…','addevent'],['Add Blank Event','evt:blank'],

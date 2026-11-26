@@ -126,7 +126,11 @@ function configureAtlas(asset, existing) {
    }
    change(() => {
     if (existing) Object.assign(existing, atlas);
-    else P.tilesets.push(atlas);
+    else {
+     P.tilesets.push(atlas);
+     tab = 'tiles';
+     revealProjectItem('tileset:' + atlas.id,'assets');
+    }
     Object.assign(tileWorkspace, { atlas: atlas.id, column: 0, row: 0 });
    });
   });
@@ -547,7 +551,12 @@ function updateTileField(input) {
  const [key, fieldName] = (input.dataset.field ?? '').split('.');
  if (!key.startsWith('tile-')) return;
  if (key === 'tile-layout') { P.activeLayout = input.value; selected = null; render(); return; }
- if (key === 'tile-atlas') { Object.assign(tileWorkspace, { atlas: input.value, column: 0, row: 0 }); renderTileEditor(); return; }
+ if (key === 'tile-atlas') {
+  Object.assign(tileWorkspace,{ atlas:input.value,column:0,row:0 });
+  renderTileEditor();
+  projectTreeSelection();
+  return;
+ }
  if (key === 'tile-filter') { tileWorkspace.tagFilter = input.value; drawTilePalette(selectedAtlas()); return; }
  if (key === 'tile-zoom') { tileWorkspace.zoom = Number(input.value); drawMapEditor(); return; }
  if (['tile-grid','tile-flipX','tile-flipY'].includes(key)) { tileWorkspace[key.slice(5)] = input.checked; drawMapEditor(); return; }
