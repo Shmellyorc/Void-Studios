@@ -48,6 +48,11 @@ async function makeDesktopApp() {
 
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), 'void-studio-'));
   const buildTools = path.join(stage,'build-tools');
+  const platform = process.platform;
+  const arch = process.arch;
+  // macOS Info.plist version fields require a numeric version. The ZIP uses
+  // metadata.version below, and the editor label comes from the source version.
+  const appVersion = platform === 'darwin' ? studio.version.split(/[-+]/,1)[0] : studio.version;
   const metadata = {
     name: studio.name,
     productName: studio.productName,
@@ -56,7 +61,7 @@ async function makeDesktopApp() {
     devDependencies: { electron: studio.devDependencies.electron },
     config: {
       forge: {
-      packagerConfig: { asar: true, extraResource: [buildTools], tmpdir: path.join(stage,'packager') },
+        packagerConfig: { asar: true, appVersion, extraResource: [buildTools], tmpdir: path.join(stage,'packager') },
         makers: [{ name: '@electron-forge/maker-zip' }],
       },
     },
@@ -73,7 +78,7 @@ async function makeDesktopApp() {
     await fs.copyFile(path.join(root, 'dist', htmlName), path.join(app, 'dist', htmlName));
     await stageBuildTools(buildTools);
 
-    const results = await api.make({ dir: app, outDir: path.join(stage, 'out') });
+    const results = await api.make({ dir: app, outDir: path.join(stage, 'out'), platform, arch });
     const destination = path.join(root, 'out', 'studio');
     await fs.mkdir(destination, { recursive: true });
 
