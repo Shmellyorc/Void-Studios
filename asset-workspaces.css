@@ -53,6 +53,13 @@
 
 #sprite-board { justify-content: safe center; align-items: safe center; }
 #sprite-board[hidden], #sprite-frames:empty, #sprite-status:empty { display: none; }
+.main:has(#spriteview:not([hidden])) {
+ grid-template-columns: var(--sprite-left,224px) minmax(0,1fr) var(--sprite-right,258px);
+}
+.main:has(#spriteview:not([hidden])):has(#sprite-sidebar[data-empty]) { --sprite-left:0px; }
+.main:has(#spriteview:not([hidden])):has(#sprite-inspector[data-empty]) { --sprite-right:0px; }
+#sprite-toolbar-actions { display: contents; }
+#sprite-export:empty { display: none; }
 #sprite-stage {
  position: relative; flex: none; touch-action: none; cursor: crosshair;
  background: repeating-conic-gradient(#2f3b49 0% 25%, #202b38 0% 50%) 0 0 / 16px 16px;
@@ -70,33 +77,27 @@
  background-image: linear-gradient(to right,#aabdd338 1px,transparent 1px),linear-gradient(to bottom,#aabdd338 1px,transparent 1px);
  background-size: var(--sprite-pixel) var(--sprite-pixel);
 }
-#sprite-tools { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; padding: 0 9px 10px; }
+#sprite-tools { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; padding: 8px 9px; }
 #sprite-tools:empty { display: none; }
 #sprite-tools button { display: grid; place-items: center; padding: 6px; min-height: 36px; }
 #sprite-tools svg { width: 21px; height: 21px; }
 #sprite-tools button.active { color: #a5f3d1; border-color: #699b8b; background: #214038; }
 #sprite-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #sprite-documents .tree { display: block; width: calc(100% - 14px); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; }
-#sprite-slices:not(:empty) { border-top: 1px solid var(--line); }
+#sprite-tool-options > .prop-group, #sprite-slices > .prop-group, #sprite-properties > .prop-group { border-bottom:0; }
 #sprite-frames label { margin: 0; }
 #sprite-frames label select, #sprite-frames label input { margin: 0; }
 #sprite-frames input[type=number] { width: 65px; }
-.sprite-swatches { display: flex; gap: 5px; flex-wrap: wrap; }
-.sprite-swatches button { background: var(--swatch); padding: 0; width: 23px; height: 23px; }
-.sprite-ink input[type=color], .sprite-swatches .sprite-transparent {
- background: repeating-conic-gradient(#6a7888 0% 25%,#344354 0% 50%) 0 0 / 10px 10px;
-}
-.sprite-ink input::-webkit-color-swatch { opacity: var(--ink-opacity); }
-.sprite-ink input::-moz-color-swatch { opacity: var(--ink-opacity); }
-.sprite-paint-hint { margin: 0 0 10px; color: var(--sub); font-size: 11px; line-height: 1.4; }
-.sprite-swatches button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 1px; }
-.sprite-layer-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px; margin-bottom: 5px; }
-.sprite-layer-row button { padding: 5px 7px; }
-.sprite-layer-row .sprite-layer-name { text-align: left; overflow: hidden; text-overflow: ellipsis; }
-.sprite-layer-row.selected .sprite-layer-name { background: #304558; border-color: #57758d; }
-.sprite-actions { display: flex; flex-wrap: wrap; gap: 5px; }
-.sprite-actions button { font-size: 11px; }
+.sprite-preset-list { max-height: 320px; overflow: auto; display: grid; gap: 4px; }
+.sprite-preset { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 7px; border: 1px solid var(--line);
+ background: #263341; border-radius: 5px; padding: 8px; cursor: pointer; margin: 0; }
+.sprite-preset[hidden] { display: none; }
+.sprite-preset:has(input:checked) { border-color: var(--accent); }
+.sprite-preset input { margin: 0; accent-color: var(--accent); }
+.sprite-preset-colors { grid-column: 2; display: flex; height: 9px; margin-top: 5px; }
+.sprite-preset-colors i { flex: 1; }
 @media (max-width: 1100px) {
+ .main:has(#spriteview:not([hidden])) { grid-template-columns: var(--sprite-left,186px) minmax(0,1fr) var(--sprite-right,216px); }
  .tabs button { padding-inline: 8px; }
  .tabs span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

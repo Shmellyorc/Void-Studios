@@ -233,16 +233,7 @@ function drawSpriteEditor(cursor) {
 function spriteToolFields() {
  const value = spriteWorkspace, check = (label,key) => checkbox(label,'sprite.'+key,value[key]);
  const showTolerance = value.tool === 'fill' || value.tool === 'wand';
- return '<div class="panelhead">BRUSH</div><div class="prop-group">' +
-  '<div class="two">' + [['left','Left','color','alpha'],['right','Right','rightColor','rightAlpha']].map(([button,label,color,alpha]) => {
-   const ink=value.paint[button];
-   return `<div class="sprite-ink" style="--ink-opacity:${ink.alpha/255}">` +
-    field(label+' color','sprite.'+color,ink.color,'color') +
-    field(label+' opacity (%)','sprite.'+alpha,Math.round(ink.alpha*1000/255)/10,'number') + '</div>';
-  }).join('') + '</div>' +
-  '<p class="sprite-paint-hint">Alt-click the canvas to sample into either mouse button.</p>' +
-  field('Size','sprite.size',value.size,'number') +
-   check('Mirror horizontally','mirrorX') + check('Mirror vertically','mirrorY') + check('Filled shapes','filled') +
+ return '<div class="prop-group">' + check('Filled shapes','filled') +
    (showTolerance ? field('Color tolerance','sprite.tolerance',value.tolerance,'number') + check('Contiguous','contiguous') : '') +
    select('Selection mode','sprite.mode',value.mode,[['replace','Replace'],['add','Add'],['subtract','Subtract'],['intersect','Intersect']]) +
   '</div>';
@@ -269,50 +260,34 @@ function renderSpriteEditor() {
  $('#sprite-empty').hidden = Boolean(doc);
  $('#sprite-board').hidden = !doc;
  const target = doc && spriteTargets(doc)[0];
- $('#sprite-toolbar').innerHTML = button('New Sprite…','sprite:new','primary') + button('Open Image…','sprite:import') +
-  (doc ? button('Link to Object…','sprite:link') + (target?.sheet ? button('Open Animator','sprite:animator') : '') +
-   '<div class="spacer"></div>' + button('Export PNG','sprite:export') : '');
+ $('#sprite-toolbar-actions').innerHTML = button('New Sprite…','sprite:new','primary') + button('Open Image…','sprite:import') +
+  (doc ? button('Link to Object…','sprite:link') + (target?.sheet ? button('Open Animator','sprite:animator') : '') : '');
+ $('#sprite-export').innerHTML = doc ? button('Export PNG','sprite:export') : '';
+ renderSpritePanelLayout(doc);
  if (!doc) {
-  $('#sprite-inspector').innerHTML = '';
-  $('#sprite-slices').innerHTML = '';
+  updateSpriteControls(doc);
   $('#sprite-frames').innerHTML = '';
   $('#sprite-status').textContent = '';
   return;
  }
- const layers = spriteLayers(doc);
- if (!selectedSpriteLayer()) spriteWorkspace.layer = layers.at(-1)?.id;
+ if (!selectedSpriteLayer()) spriteWorkspace.layer = spriteLayers(doc).at(-1)?.id;
  syncSpriteSurfaces(doc);
- const selected = selectedSpriteLayer(), area = selectedSpriteSlice();
+ const area = selectedSpriteSlice();
  $('#sprite-frames').innerHTML = button('Frame Grid…','sprite:gridDialog') + (doc.sheet ?
   select('View','sprite.view',spriteWorkspace.frame == null ? 'sheet' : 'frame',[['sheet','Sheet'],['frame','Frame']]) +
   (spriteWorkspace.frame == null ? '' : button('‹','sprite:prev') + field('Frame','sprite.frame',spriteWorkspace.frame+1,'number') +
    button('›','sprite:next') + button('Copy Previous','sprite:previousPixels') + checkbox('Onion skin','sprite.onion',spriteWorkspace.onion)) : '') +
   checkbox('Pixel grid','sprite.grid',spriteWorkspace.grid) + (doc.sheet ? checkbox('Frame guides','sprite.frameGrid',spriteWorkspace.frameGrid) : '');
  const targets = spriteTargets(doc).map(type => type.name).join(', ');
- $('#sprite-slices').innerHTML = '<div class="panelhead">SLICES</div><div class="prop-group">' +
+ $('#sprite-slices').innerHTML = '<div class="prop-group">' +
    select('Named slice','sprite.slice',area?.id ?? '',[['','None'],...doc.slices.map(slice => [slice.id,slice.name])]) +
    button('New from Selection','sprite:sliceSelection') + (area ? button('Edit Slice…','sprite:editSlice') +
     button('Export Slice PNG','sprite:exportSlice') + button('Delete Slice','sprite:removeSlice','danger ghost') : '') + '</div>';
- $('#sprite-inspector').innerHTML = spriteToolFields() +
-  '<div class="panelhead">PALETTE</div><div class="prop-group"><div class="sprite-swatches">' +
-   `<button class="sprite-transparent" title="Transparent · Left or right click" aria-label="Transparent"
-    data-act="sprite:color:transparent" aria-pressed="${spriteWorkspace.paint.left.alpha===0}"></button>` +
-   doc.palette.map((color,i) =>
-    `<button title="${color} · Left or right click" aria-label="${color}" data-act="sprite:color:${i}"
-     aria-pressed="${spriteWorkspace.paint.left.alpha>0 && color===spriteWorkspace.paint.left.color}" style="--swatch:${color}"></button>`).join('') +
-   '</div>' + button('Add Color','sprite:addColor') + button('Remove Color','sprite:removeColor') + '</div>' +
-  '<div class="panelhead">LAYERS' + button('+','sprite:addLayer') + '</div><div class="prop-group">' +
-   [...layers].reverse().map(layer => `<div class="sprite-layer-row ${layer === selected ? 'selected' : ''}">
-    <button class="sprite-layer-name" data-act="sprite:layer:${layer.id}">${esc(layer.name)}</button>
-    <button data-act="sprite:visible:${layer.id}" title="${layer.visible?'Hide layer':'Show layer'}" aria-label="${layer.visible?'Hide':'Show'} ${esc(layer.name)}">${layer.visible?'●':'○'}</button>
-    <button data-act="sprite:lock:${layer.id}" title="${layer.locked?'Unlock layer':'Lock layer'}" aria-label="${layer.locked?'Unlock':'Lock'} ${esc(layer.name)}">${layer.locked?'🔒':'◇'}</button></div>`).join('') +
-   button('Import Image as Layer…','sprite:importLayer') +
-   (selected ? field('Layer name','sprite.layerName',selected.name) + field('Opacity (%)','sprite.layerOpacity',Math.round(selected.opacity*100),'number') +
-    '<div class="sprite-actions">' + button('Raise','sprite:raiseLayer') + button('Lower','sprite:lowerLayer') +
-    button('Duplicate','sprite:duplicateLayer') + button('Merge Down','sprite:mergeDown') + button('Delete','sprite:removeLayer','danger ghost') + '</div>' : '') + '</div>' +
-  '<div class="panelhead">SPRITE</div><div class="prop-group">' + field('Name','sprite.name',doc.name) +
+ $('#sprite-tool-options').innerHTML = spriteToolFields();
+ $('#sprite-properties').innerHTML = '<div class="prop-group">' + field('Name','sprite.name',doc.name) +
    (targets ? '<p class="muted">Linked to ' + esc(targets) + '</p>' : '') +
    button('Resize Canvas…','sprite:resize') + button('Delete Sprite','sprite:remove','danger ghost') + '</div>';
+ updateSpriteControls(doc);
  drawSpriteEditor();
 }
 
@@ -558,20 +533,10 @@ function spriteSelectionAction(action,doc) {
  });
 }
 
-function spritePaletteColor(id,button) {
- const ink=spriteWorkspace.paint[button];
- if (id==='transparent') ink.alpha=0;
- else {
-  const color=currentSprite()?.palette[Number(id)];
-  if (!color) return;
-  Object.assign(ink,{color,alpha:255});
- }
- renderSpriteEditor();
-}
-
 function spriteEditorAction(action,id) {
  const doc=currentSprite(), layer=selectedSpriteLayer(), slice=selectedSpriteSlice();
  if (action==='new') return spriteNewDialog();
+ if (action==='panel') return changeSpritePanel(id,id==='reset'?'reset':'hide');
  if (action==='import' || action==='importLayer') {
   $('#sprite-file').dataset.mode=action;
   $('#sprite-file').click();
@@ -604,10 +569,11 @@ function spriteEditorAction(action,id) {
    data.data.set(previous.data.subarray(y*area.w*4,(y+1)*area.w*4),destination);
   }
  }); break;
- case 'color': spritePaletteColor(id,'left');break;
- case 'addColor': if (!doc.palette.includes(spriteWorkspace.paint.left.color)) change(()=>doc.palette.push(spriteWorkspace.paint.left.color));break;
- case 'removeColor': change(()=>{doc.palette=doc.palette.filter(color=>color!==spriteWorkspace.paint.left.color);});break;
- case 'layer': spriteWorkspace.layer=id;renderSpriteEditor();break;
+ case 'mirrorX': case 'mirrorY':
+  spriteWorkspace[action]=!spriteWorkspace[action];updateSpriteControls(doc);renderStudioMenu();break;
+ case 'layer':
+  if (spriteLayers(doc).some(item=>item.id===id)) { spriteWorkspace.layer=id;updateSpriteControls(doc); }
+  break;
  case 'addLayer': change(()=>{
   const next=makeSpriteLayer(doc,'Layer '+(spriteLayers(doc).length+1));
   P.spriteLayers.push(next);spriteWorkspace.layer=next.id;
@@ -699,7 +665,8 @@ function sampleSpriteInk(doc,point,button) {
  const pixel=flattenedSprite(doc,{...point,w:1,h:1}).getContext('2d').getImageData(0,0,1,1).data;
  const color='#'+Array.from(pixel.slice(0,3),channel=>channel.toString(16).padStart(2,'0')).join('');
  Object.assign(spriteWorkspace.paint[button],{color,alpha:pixel[3]});
- renderSpriteEditor();
+ updateSpriteControls(doc);
+ updateSpriteCursor();
 }
 
 function updateSpriteCursor() {
@@ -873,40 +840,20 @@ async function importSpriteImage(event) {
 }
 
 function spriteFieldChanged(event) {
- const input=event.target, key=input.dataset.field?.split('.')[1], doc=currentSprite(), layer=selectedSpriteLayer();
+ const input=event.target, key=input.dataset.field?.split('.')[1], doc=currentSprite();
  if (!key || !doc) return;
  const value=input.type==='checkbox' ? input.checked : input.value;
- if (['color','rightColor','alpha','rightAlpha'].includes(key)) {
-  const ink=spriteWorkspace.paint[key.startsWith('right') ? 'right' : 'left'];
-  if (input.type==='color') {
-   ink.color=value;
-   if (!ink.alpha) ink.alpha=255;
-  } else {
-   ink.alpha=Math.round(255*Math.max(0,Math.min(100,Number(value)||0))/100);
-  }
-  return renderSpriteEditor();
- }
  if (key==='view') return spriteSetFrame(value==='frame' ? 0 : null);
  if (key==='frame') return spriteSetFrame(Math.round(Number(value)||1)-1);
- if (key==='name' || key==='layerName') {
-  const target=key==='name' ? doc : layer;
+ if (key==='name') {
   const name=value.trim().slice(0,100);
-  if (target && name && target.name!==name) change(()=>{target.name=name;});
-  else input.value=target?.name ?? '';
+  if (name && name!==doc.name) change(()=>{doc.name=name;});
+  else input.value=doc.name;
   return;
  }
- if (key==='layerOpacity') {
-  if (!layer || !spriteReady()) return;
-  const opacity=Math.round(Math.min(100,Math.max(0,Number(value)||0)))/100;
-  if (opacity!==layer.opacity) change(()=>{ layer.opacity=opacity;setSpriteArtwork(doc); });
-  else input.value=Math.round(layer.opacity*100);
-  return;
- }
- const numericLimits={size:[1,16],tolerance:[0,255]};
- if (numericLimits[key]) {
-  const [min,max]=numericLimits[key];
-  spriteWorkspace[key]=Math.min(max,Math.max(min,Math.round(Number(value)||0)));
-  input.value=spriteWorkspace[key];
+ if (key==='tolerance') {
+  spriteWorkspace.tolerance=Math.min(255,Math.max(0,Math.round(Number(value)||0)));
+  input.value=spriteWorkspace.tolerance;
  } else {
   spriteWorkspace[key]=value;
   if (key==='slice') return renderSpriteEditor();
@@ -916,14 +863,11 @@ function spriteFieldChanged(event) {
 
 function setupSpriteEditor() {
  setupSpriteStage();
+ setupSpriteControls();
  $('#sprite-file').addEventListener('change',importSpriteImage);
- for (const selector of ['#sprite-inspector','#sprite-frames','#sprite-slices']) $(selector).addEventListener('change',spriteFieldChanged);
- $('#sprite-inspector').addEventListener('contextmenu',event=>{
-  const swatch=event.target.closest('.sprite-swatches button');
-  if (!swatch) return;
-  event.preventDefault();
-  spritePaletteColor(swatch.dataset.act.split(':').at(-1),'right');
- });
+ for (const selector of ['#sprite-frames','#sprite-tool-options','#sprite-properties','#sprite-slices']) {
+  $(selector).addEventListener('change',spriteFieldChanged);
+ }
  const selectionKeys={a:'selectAll',d:'deselect',c:'copy',x:'cut',v:'paste'};
  window.addEventListener('keydown',event=>{
   if (tab!=='sprite' || !currentSprite() || document.querySelector('dialog[open]')) return;
@@ -933,7 +877,7 @@ function setupSpriteEditor() {
    if (document.activeElement===$('#sprite-stage')) event.preventDefault();
    return;
   }
-  if (document.activeElement.matches('input,select,textarea,[contenteditable],.studio-menu-command')) return;
+  if (event.composedPath()[0]?.matches?.('input,select,textarea,[contenteditable],.studio-menu-command')) return;
   if (event.code==='Space' && document.activeElement.matches('#sprite-stage,body')) {
    event.preventDefault();
    spriteWorkspace.space=true;

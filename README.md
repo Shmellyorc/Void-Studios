@@ -56,6 +56,18 @@ button. Sample a transparent pixel to erase with that button. You can also
 click a palette swatch with either button, including the checkerboard swatch
 for transparency.
 
+Drag the divider after the palette swatches to add or remove color slots.
+Double-click a swatch to edit it. The palette lock protects the entries while
+you paint. Shift-click a second swatch to select a range for palette operations
+such as gradients. Use the palette controls to load or save a GIMP palette
+file or pick a preset.
+
+Each Sprite panel can collapse, move up or down, switch sides, or hide. Use
+**Panels** in the menu bar to show panels again or reset their positions.
+Double-click a layer name to rename it, and drag its thumbnail to reorder it.
+Brush size and mirroring are in the top toolbar, and the **Brush** menu also
+controls mirroring.
+
 Use rectangular or elliptical selection, freehand lasso, or a magic wand with
 color tolerance and contiguous or matching-color selection. Hold Shift to add,
 Alt to subtract, or both to intersect. The **Selection** menu includes cut,

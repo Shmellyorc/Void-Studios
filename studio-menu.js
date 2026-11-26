@@ -31,6 +31,9 @@ const studioWorkspaceCommands = {
  sprite: [
   ['Sprite',[['New Sprite…','sprite:new'],['Open Image…','sprite:import'],['Import Image as Layer…','sprite:importLayer'],null,
    ['Resize Canvas…','sprite:resize'],['Frame Grid…','sprite:gridDialog'],['Link to Object…','sprite:link'],['Export PNG','sprite:export']]],
+  ['Brush',[['Mirror Horizontally','sprite:mirrorX'],['Mirror Vertically','sprite:mirrorY']]],
+  ['Panels',[...Object.entries(spritePanelLabels).map(([id,label])=>[label,'sprite:panel:'+id]),null,
+   ['Reset Panel Layout','sprite:panel:reset']]],
   ['Selection',[['Select All','sprite:selectAll','Ctrl+A'],['Deselect','sprite:deselect','Ctrl+D'],['Invert Selection','sprite:invert'],null,
    ['Cut','sprite:cut','Ctrl+X'],['Copy','sprite:copy','Ctrl+C'],['Paste','sprite:paste','Ctrl+V'],['Clear Pixels','sprite:clearPixels','Delete'],null,
    ['Flip Horizontally','sprite:flip-x'],['Flip Vertically','sprite:flip-y'],['Rotate Clockwise','sprite:rotate'],['New Slice from Selection…','sprite:sliceSelection']]],
@@ -66,19 +69,28 @@ const studioMenuAvailability = {
  'sprite:resize': () => Boolean(currentSprite()),
  'sprite:link': () => Boolean(currentSprite()),
  'sprite:export': () => Boolean(currentSprite()),
+ 'sprite:mirrorX': () => Boolean(currentSprite()),
+ 'sprite:mirrorY': () => Boolean(currentSprite()),
  'zoom:in': () => canZoomWorkspace(1),
  'zoom:out': () => canZoomWorkspace(-1),
  'zoom:reset': () => canZoomWorkspace(0),
+};
+const studioMenuChecks = {
+ 'sprite:mirrorX':()=>spriteWorkspace.mirrorX,
+ 'sprite:mirrorY':()=>spriteWorkspace.mirrorY,
+ ...Object.fromEntries(Object.keys(spritePanelLabels).map(id=>['sprite:panel:'+id,()=>!spritePreferences.panels[id].hidden])),
 };
 
 function studioMenuMarkup(label, entries, index, workspace) {
  const items = entries.map(entry => {
   if (!entry) return '<div class="studio-menu-separator" role="separator"></div>';
   const [text, action, hint, id, view] = entry;
-  return `<button type="button" class="studio-menu-command" role="${view ? 'menuitemradio' : 'menuitem'}" tabindex="-1"
+  const checked = studioMenuChecks[action];
+  const role = view ? 'menuitemradio' : checked ? 'menuitemcheckbox' : 'menuitem';
+  return `<button type="button" class="studio-menu-command" role="${role}" tabindex="-1"
    ${action ? 'data-menu-act="' + esc(action) + '"' : ''} ${id ? 'id="' + esc(id) + '"' : ''}
-   ${view ? 'data-menu-view="' + esc(view) + '" aria-checked="false"' : ''}>
-   ${view ? '<span class="studio-menu-check" aria-hidden="true">✓</span>' : ''}
+   ${view ? 'data-menu-view="' + esc(view) + '"' : ''} ${view || checked ? 'aria-checked="false"' : ''}>
+   ${view || checked ? '<span class="studio-menu-check" aria-hidden="true">✓</span>' : ''}
    <span>${esc(text)}</span>${hint ? '<kbd>' + esc(hint) + '</kbd>' : ''}</button>`;
  }).join('');
  return `<div class="studio-menu-group" role="none" ${workspace ? 'data-menu-workspace="' + esc(workspace) + '" hidden' : ''}>
@@ -196,5 +208,8 @@ function setupStudioMenu() {
   const visible = visibleTriggers();
   if (!visible.some(trigger => trigger.tabIndex === 0)) selectTrigger(visible[0]);
   for (const item of bar.querySelectorAll('[data-menu-view]')) item.setAttribute('aria-checked',String(item.dataset.menuView === tab));
+  for (const item of bar.querySelectorAll('[role="menuitemcheckbox"]')) {
+   item.setAttribute('aria-checked',String(studioMenuChecks[item.dataset.menuAct]()));
+  }
  };
 }

@@ -5,6 +5,16 @@ const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'dist');
 const pixiRoot = path.resolve(path.dirname(require.resolve('pixi.js')), '..');
 const pixi = fs.readFileSync(path.join(pixiRoot, 'dist', 'pixi.min.js'));
+const spriteControls = require('esbuild').buildSync({
+  entryPoints: [path.join(root, 'sprite-controls.js')],
+  bundle: true,
+  minify: true,
+  format: 'iife',
+  platform: 'browser',
+  target: 'es2022',
+  legalComments: 'inline',
+  write: false,
+}).outputFiles[0].text;
 
 const source = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const notices = [source('LICENSE'), fs.readFileSync(path.join(pixiRoot, 'LICENSE'), 'utf8')];
@@ -36,6 +46,8 @@ const html = source('shell.html')
   .replace('/*UI_EDITOR*/', () => source('ui-editor.js'))
   .replace('/*AUDIO_EDITOR*/', () => source('audio-editor.js'))
   .replace('/*SPRITE_PIXELS*/', () => source('sprite-pixels.js'))
+  .replace('/*SPRITE_CONTROLS*/', () => spriteControls)
+  .replace('/*SPRITE_WORKSPACE*/', () => source('sprite-workspace.js'))
   .replace('/*SPRITE_EDITOR*/', () => source('sprite-editor.js'))
   .replace('/*WORKSPACE_ZOOM*/', () => source('workspace-zoom.js'))
   .replace('/*STUDIO_MENU*/', () => source('studio-menu.js'))
