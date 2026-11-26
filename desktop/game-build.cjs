@@ -97,6 +97,7 @@ async function buildDesktopGame({ input, html, destination, electronVersion }, p
     const icon = await writeGameIcon(source,settings.icon,platform);
     await Promise.all([
       fs.copyFile(path.join(__dirname,'game-main.cjs'),path.join(source,'main.cjs')),
+      fs.copyFile(path.join(__dirname,'game-preload.cjs'),path.join(source,'game-preload.cjs')),
       fs.copyFile(path.join(__dirname,'..','LICENSE'),path.join(source,'VOID-STUDIO-LICENSE')).catch(error => {
         if (error.code !== 'ENOENT') throw error;
         return fs.copyFile(path.join(__dirname,'VOID-STUDIO-LICENSE'),path.join(source,'VOID-STUDIO-LICENSE'));
@@ -115,6 +116,7 @@ async function buildDesktopGame({ input, html, destination, electronVersion }, p
     const [built] = await packager({
       dir: source,
       out: path.join(temporary,'out'),
+      tmpdir: path.join(temporary,'packager'),
       name, platform, arch, electronVersion, appVersion: version,
       appBundleId: 'game.voidstudio.' + slug,
       asar: true,

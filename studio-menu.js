@@ -22,8 +22,9 @@ const studioWorkspaceCommands = {
    ['Play / Pause Clip','anim:play'],['Rewind Clip','anim:rewind']]],
  ],
  ui: [
-  ['UI',[['New Screen…','ui:newScreen'],['Add Button','ui:add:button'],['Add Label','ui:add:label'],
-   ['Add Bar','ui:add:bar'],null,['Load Menu Demo…','ui:demo']]],
+  ['UI',[['New Screen…','ui:newScreen'],['Add Panel','ui:add:panel'],['Add Button','ui:add:button'],['Add Label','ui:add:label'],
+   ['Add Bar','ui:add:bar'],['Add Slider','ui:add:slider'],['Add Toggle','ui:add:toggle'],['Add Dropdown','ui:add:dropdown'],
+   null,['Shared Styles…','ui:styles'],['Load Menu Demo…','ui:demo']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
 };
@@ -45,6 +46,10 @@ const studioMenuAvailability = {
  'ui:add:button': () => Boolean(currentUIScreen()),
  'ui:add:label': () => Boolean(currentUIScreen()),
  'ui:add:bar': () => Boolean(currentUIScreen()),
+ 'ui:add:panel': () => Boolean(currentUIScreen()),
+ 'ui:add:slider': () => Boolean(currentUIScreen()),
+ 'ui:add:toggle': () => Boolean(currentUIScreen()),
+ 'ui:add:dropdown': () => Boolean(currentUIScreen()),
  'zoom:in': () => canZoomWorkspace(1),
  'zoom:out': () => canZoomWorkspace(-1),
  'zoom:reset': () => canZoomWorkspace(0),

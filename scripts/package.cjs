@@ -21,7 +21,7 @@ async function stageBuildTools(directory) {
     });
   }
   await Promise.all([
-    ...['game-build.cjs','game-main.cjs'].map(file => fs.copyFile(path.join(root,'desktop',file),path.join(directory,file))),
+    ...['game-build.cjs','game-main.cjs','game-preload.cjs'].map(file => fs.copyFile(path.join(root,'desktop',file),path.join(directory,file))),
     fs.copyFile(path.join(root,'LICENSE'),path.join(directory,'VOID-STUDIO-LICENSE')),
   ]);
 }
@@ -56,7 +56,7 @@ async function makeDesktopApp() {
     devDependencies: { electron: studio.devDependencies.electron },
     config: {
       forge: {
-      packagerConfig: { asar: true, extraResource: [buildTools] },
+      packagerConfig: { asar: true, extraResource: [buildTools], tmpdir: path.join(stage,'packager') },
         makers: [{ name: '@electron-forge/maker-zip' }],
       },
     },

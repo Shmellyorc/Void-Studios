@@ -13,17 +13,42 @@ button.void-ui-button {
 }
 button.void-ui-button:hover { filter: brightness(1.2); background: var(--void-ui-color); }
 .void-ui-focused, button.void-ui-button:focus-visible { outline: 2px solid #affde0; outline-offset: -3px; }
+.void-ui-panel { background: var(--void-ui-color); border: 1px solid #ffffff24; border-radius: .38em; }
+.void-ui-panel.void-ui-transparent { border: 0; }
+.void-ui-setting {
+ display: flex; justify-content: start; gap: .6em; padding: 0 .6em;
+ background: var(--void-ui-color); border: 1px solid #ffffff30; border-radius: .38em; pointer-events: auto;
+}
+.void-ui-setting > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.void-ui-setting input { width: 42%; min-width: 0; margin: 0; accent-color: var(--void-ui-focus,#9ee6c7); }
+.void-ui-setting button, .void-ui-setting select {
+ color: inherit; background: #132433; font: inherit; border: 1px solid #ffffff40;
+ border-radius: .25em; padding: .13em .45em; width: auto; max-width: 53%; cursor: pointer;
+}
+.void-ui-setting > span:last-child { min-width: 2ch; font-variant-numeric: tabular-nums; }
+button.void-ui-button:hover, .void-ui-setting:hover { background: var(--void-ui-hover,var(--void-ui-color)); }
+button.void-ui-button.void-ui-themed:hover, button.void-ui-button.void-ui-disabled:hover { filter: none; }
+button.void-ui-button:active, .void-ui-setting:active, .void-ui-control.void-ui-pressed { background: var(--void-ui-pressed,var(--void-ui-color)); }
+.void-ui-control.void-ui-focused, button.void-ui-button:focus-visible { outline-color: var(--void-ui-focus,#affde0); }
+button.void-ui-button.void-ui-disabled, .void-ui-setting.void-ui-disabled {
+ background: var(--void-ui-disabled,#475261); opacity: .7; cursor: default;
+}
+.void-ui-host:fullscreen { display: grid; place-items: center; background: #080d14; }
+.void-ui-host:fullscreen > canvas, .void-ui-window-fullscreen > canvas { max-width: 100vw !important; max-height: 100vh !important; }
+body:has(.void-ui-window-fullscreen) > :not(.void-ui-window-fullscreen):is(header,p) { display: none; }
 .void-ui-bar { isolation: isolate; border: 1px solid #ffffff70; border-radius: .32em; background: #111d2d; }
 .void-ui-bar::before { content: ""; position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--void-ui-value); background: var(--void-ui-color); }
 .void-ui-bar span { text-shadow: 0 1px 3px #121722; }
 
 #ui-board { align-items: center; }
 .ui-editor-stage {
- position: relative; flex: none; width: calc(min(100%,850px) * var(--workspace-zoom,1)); overflow: hidden; touch-action: none;
+ position: relative; flex: none; width: calc(min(100%,var(--ui-stage-width,850px)) * var(--workspace-zoom,1)); overflow: hidden; touch-action: none;
  background: #203144; box-shadow: 0 8px 30px #0008, 0 0 0 1px #56677a;
 }
 .ui-editor-stage.void-ui-paused { background: #152233; }
 .ui-editor-stage .void-ui-control { pointer-events: auto; cursor: move; touch-action: none; }
+.ui-editor-stage .void-ui-setting > * { pointer-events: none; }
+.ui-editor-stage .void-ui-control.ui-editor-locked { pointer-events: none; }
 .ui-editor-stage .ui-editor-selected { outline: 2px solid #6cd5ff; outline-offset: -2px; }
 .ui-selection-frame, .ui-selection-marquee {
  position: absolute; z-index: 3; pointer-events: none; box-sizing: border-box;
@@ -40,3 +65,10 @@ button.void-ui-button:hover { filter: brightness(1.2); background: var(--void-ui
 .ui-resize-handle[data-ui-resize="e"], .ui-resize-handle[data-ui-resize="w"] { cursor: ew-resize; }
 .ui-resize-handle[data-ui-resize="nw"], .ui-resize-handle[data-ui-resize="se"] { cursor: nwse-resize; }
 .ui-resize-handle[data-ui-resize="ne"], .ui-resize-handle[data-ui-resize="sw"] { cursor: nesw-resize; }
+.ui-hierarchy-row { display: flex; align-items: center; gap: 2px; padding: 3px 4px 3px calc(4px + var(--ui-depth)*10px); }
+.ui-hierarchy-name { flex: 1; text-align: left; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-hierarchy-row button { padding: 4px 5px; }
+.ui-hierarchy-row small { color: var(--sub); font-size: 10px; }
+.ui-hierarchy-selected { background: #2b455b; }
+.ui-hierarchy-muted .ui-hierarchy-name { opacity: .5; }
+.ui-hierarchy-tools { display: flex; gap: 4px; padding: 4px; }

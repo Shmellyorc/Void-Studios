@@ -198,6 +198,19 @@ and color fields for a single control.
 Set **Starting UI** for each layout. Layouts can share screens, and a screen can
 pause gameplay while its controls are active.
 
+Add a **Panel** for free placement, a vertical stack, or a horizontal stack.
+Set padding, gap, and cross-axis alignment in its inspector. Add controls while
+a panel is selected, or move existing controls with **Parent panel**. Use the
+hierarchy to reorder siblings, group a selection, or hide and lock items while
+editing. The **Viewport** picker previews narrow, wide, ultrawide, and portrait
+camera shapes without changing the layout.
+
+Sliders, toggles, and dropdowns write to their bound global variable. Use **On
+control value changed** to react in the visual event sheet. In a menu, Up and
+Down move focus, Left and Right adjust the focused setting, and Confirm
+activates buttons or toggles. **Styles** creates reusable fonts and colors,
+including hover, pressed, focused, and disabled states.
+
 Buttons can open a layout, restart it, show a different screen, or restore the
 layout's starting UI. Choose **Trigger visual event** on a button and add **On
 button activated** to run its event. To run a button event on a paused screen, put the activation condition
@@ -212,7 +225,9 @@ the sequence. The Menu Back action restores the layout's starting UI from a
 menu overlay. You can turn off menu navigation on a screen such as a gameplay HUD.
 
 Choose **Load Menu Demo** in the UI workspace to try the Shard Runner title
-screen, HUD, and pause menu. Move with the arrow keys or D-pad and pause with
+screen, Options panel, HUD, and pause menu. Options includes a volume slider, a
+fullscreen toggle, and a test-tone dropdown. Browser fullscreen can require a
+mouse or keyboard gesture. Move with the arrow keys or D-pad and pause with
 Escape or Start. Open **Editor → Settings** for renderer selection, event
 execution mode, and the default layout grid.
 

@@ -2,7 +2,7 @@ const conditionExpressions = { compare: ['expr'], filter: ['expr'], every: ['sec
 const actionExpressions = {
  return: ['value'], setLocal: ['value'], setEntry: ['key','value'], setGlobal: ['value'], addGlobal: ['value'],
  create: ['x','y'], cameraPosition: ['x','y'], cameraZoom: ['zoom'], cameraShake: ['strength','duration'],
- log: ['value'], sound: ['frequency','duration'], emitParticles: ['count'], navigate: ['x','y','restart'],
+ log: ['value'], sound: ['frequency','duration'], audioVolume: ['value'], emitParticles: ['count'], navigate: ['x','y','restart'],
  moveSolid: ['x','y'], playClip: ['restart'], animation: ['value'], damage: ['value'], heal: ['value'],
  set: ['value'], add: ['value'], position: ['x','y'], jump: ['value'], text: ['value'], instance: ['value'],
 };
