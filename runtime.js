@@ -213,15 +213,41 @@ function createPixiView(canvas, { report = () => {} } = {}) {
 
 /* VOID Studio game runtime. */
 function createRuntime(project, canvas, hooks={}) {
- const p=structuredClone(project),ctx=canvas.getContext('2d'),keys=new Set(),pressed=new Set(),images=new Map(),errors=new Set();
- let objects=[],vars={},layout=null,time=0,dt=0,first=true,uid=0,frame=0,raf=0,running=false,last=0,nextLayout=null,previousPairs=new Set(),currentPairs=new Set(),pairRecords=new Map(),timers=new Map(),previousTimers=new Map(),changed=false,paused=false;
+ const p=normalizeProjectBehaviors(structuredClone(project)),ctx=canvas.getContext('2d'),keys=new Set(),pressed=new Set(),images=new Map(),errors=new Set();
+ let objects=[],vars={},layout=null,time=0,dt=0,first=true,uid=0,frame=0,raf=0,running=false,last=0,nextLayout=null,previousPairs=new Set(),timers=new Map(),previousTimers=new Map(),changed=false,paused=false;
  const renderer=createPixiView(canvas,{report:m=>hooks.renderer?.(m)}); const types=Object.fromEntries(p.types.map(t=>[t.id,t])); const byName=Object.fromEntries(p.types.map(t=>[t.name,t.id]));
  function report(e){let msg=String(e.message||e);if(!errors.has(msg)){errors.add(msg);hooks.error?.(msg)}}
- function make(t,props={}){return {id:++uid,type:t.id,x:0,y:0,w:t.w||32,h:t.h||32,angle:0,opacity:1,text:t.text||'',vx:0,vy:0,ground:false,dead:false,visible:true,vars:structuredClone(t.vars||{}),...props,id:uid,type:t.id,vars:{...t.vars,...props.vars}}}
- function enter(id){layout=p.layouts.find(l=>l.id===id)||p.layouts[0];canvas.width=layout.width;canvas.height=layout.height;objects=layout.instances.filter(i=>types[i.type]).map(i=>make(types[i.type],i));first=true;time=0;previousPairs.clear();currentPairs.clear();pairRecords.clear();timers.clear();previousTimers.clear();changed=true;nextLayout=null;hooks.layout?.(layout.name)}
+ const sheets = new Map(p.behaviorSheets.map(sheet => [sheet.id, sheet]));
+ const behaviorPlans = new Map(p.types.map(type => {
+  const attached = new Map(type.behaviors.map(behavior => [behavior.id, behavior.settings]));
+  const builtIn = Object.entries(BUILT_IN_BEHAVIORS)
+   .filter(([id, definition]) => attached.has(id) && definition.step)
+   .map(([id, definition]) => ({ definition, settings: behaviorSettings(definition.fields, attached.get(id)) }));
+  const custom = [...attached].filter(([id]) => sheets.has(id)).map(([id, settings]) => {
+   const sheet = sheets.get(id);
+   return { sheet, settings: behaviorSettings(customBehaviorFields(sheet), settings) };
+  });
+  return [type.id, { solid: attached.has('solid'), builtIn, custom }];
+ }));
+ const instanceClocks = new WeakMap();
+ let currentBehaviorPairs, previousBehaviorPairs = new Set();
+ let solids = [];
+
+ function make(type, props = {}) {
+  const object = {
+   x: 0, y: 0, w: type.w || 32, h: type.h || 32, angle: 0, opacity: 1,
+   text: type.text || '', vx: 0, vy: 0, ground: false, dead: false, visible: true,
+   ...props, id: ++uid, type: type.id, vars: structuredClone({ ...type.vars, ...props.vars }),
+  };
+  if (behaviorPlans.get(type.id).custom.length) {
+   instanceClocks.set(object, { created: true, startedAt: time, previousTimers: new Map() });
+  }
+  return object;
+ }
+ function enter(id){layout=p.layouts.find(l=>l.id===id)||p.layouts[0];canvas.width=layout.width;canvas.height=layout.height;time=0;objects=layout.instances.filter(i=>types[i.type]).map(i=>make(types[i.type],i));first=true;previousPairs.clear();previousBehaviorPairs.clear();timers.clear();previousTimers.clear();changed=true;nextLayout=null;hooks.layout?.(layout.name)}
  const overlap=(a,b)=>a!==b&&a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
  const all=id=>objects.filter(o=>!o.dead&&o.type===id);
- const pick=(s,id)=> (s[id]||all(id)).filter(o=>!o.dead);
+ const pick=(scope,id,owner)=> (scope[id] || (id===SELF_TARGET ? (owner ? [owner.object] : []) : all(id))).filter(o=>!o.dead);
  const narrow=(s,id,items)=>({...s,[id]:items});
  const pairKey=(a,b)=>Math.min(a.id,b.id)+':'+Math.max(a.id,b.id);
  const norm=k=>({space:' ',spacebar:' ',left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown'}[String(k).toLowerCase()]||String(k).toLowerCase());
@@ -233,16 +259,148 @@ function createRuntime(project, canvas, hooks={}) {
  function compile(src){src=String(src??'0');if(cache.has(src))return cache.get(src);let tok=[],r=/\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:([eE][+-]?\d+))?|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*)|(===|!==|==|!=|<=|>=|&&|\|\||[+\-*/%<>()!.,]))/gy,pos=0;while(pos<src.length){if(!src.slice(pos).trim())break;r.lastIndex=pos;let m=r.exec(src);if(!m)throw Error('Invalid expression near '+src.slice(pos));pos=r.lastIndex;tok.push(m[1]?['n',Number(m[1]+(m[2]||''))]:m[3]?['s',m[3].slice(1,-1).replace(/\\([nrt'"\\])/g,(_,c)=>({n:'\n',r:'\r',t:'\t'}[c]||c))]:m[4]?['id',m[4]]:['op',m[5]])}let i=0;const peek=()=>tok[i]?.[1],take=()=>tok[i++],expect=x=>{if(peek()!==x)throw Error('Expected '+x+' in '+src);i++};const prec={'||':1,'&&':2,'==':3,'===':3,'!=':3,'!==':3,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,'%':6};
  function atom(){let t=take();if(!t)throw Error('Incomplete expression: '+src);let [kind,v]=t;if(v==='('&&kind==='op'){let f=parse(0);expect(')');return f}if(kind==='op'&&['!','-','+'].includes(v)){let f=atom();return c=>v==='!'?!f(c):v==='-'?-f(c):+f(c)}if(kind==='n'||kind==='s')return ()=>v;if(kind!=='id')throw Error('Unexpected '+v);if(peek()==='('){i++;let args=[];if(peek()!==')'){do{args.push(parse(0));if(peek()!==',')break;i++}while(true)}expect(')');if(!Object.hasOwn(functions,v))throw Error('Unknown function '+v);return c=>functions[v](...args.map(f=>f(c)))}let path=[v];while(peek()==='.'){i++;let q=take();if(q?.[0]!=='id')throw Error('Expected property');path.push(q[1])}return c=>resolve(path,c)}
  function parse(min){let a=atom();while(prec[peek()]>=min&&prec[peek()]!==undefined){let op=take()[1],b=parse(prec[op]+1),prev=a;a=c=>{let x=prev(c);if(op==='&&')return x&&b(c);if(op==='||')return x||b(c);let y=b(c);switch(op){case '+':return x+y;case '-':return x-y;case '*':return x*y;case '/':return x/y;case '%':return x%y;case '==':case '===':return x===y;case '!=':case '!==':return x!==y;case '<':return x<y;case '>':return x>y;case '<=':return x<=y;case '>=':return x>=y}}}return a}let f=parse(0);if(i!==tok.length)throw Error('Unexpected token in '+src);cache.set(src,f);return f}
- const callStack=[];const functionDefs=new Map(p.layouts.flatMap(l=>l.events.filter(e=>e.functionName).map(e=>[e.functionName,e])));function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.self;else if(a==='Mouse')v=mouse;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
- function expr(s,scope,self,index=0){return compile(s)({scope,self,index})}
+ const callStack=[];const functionDefs=new Map(p.layouts.flatMap(l=>l.events.filter(e=>e.functionName).map(e=>[e.functionName,e])));function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse')v=mouse;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
+ const attachedSheets = [...behaviorPlans.values()].flatMap(plan => plan.custom.map(({ sheet }) => sheet));
+ function containsCollision(events) {
+  return events.some(event => event.conditions.some(condition => condition.kind === 'collision') ||
+   containsCollision(event.children || []));
+ }
+ const checksBehaviorCollisions = attachedSheets.some(sheet => containsCollision(sheet.events)) ||
+  (attachedSheets.length > 0 && containsCollision([...functionDefs.values()]));
+
+ function matchingPair(kind, a, b, owner) {
+  if (kind === 'overlap') return overlap(a, b);
+  const key = pairKey(a, b);
+  if (owner) return currentBehaviorPairs.has(key) && !previousBehaviorPairs.has(key);
+  return overlap(a, b) && !previousPairs.has(key);
+ }
+
+ function expr(s,scope,target,index=0,owner){return compile(s)({scope,target,index,owner})}
  let mouse={x:0,y:0,down:false,clicked:false};
- function condition(c,s,eventId,index){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index);switch(c.kind){case 'start':ok=first;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':{let n=Math.max(.016,Number(val(a.seconds))||1),k=eventId+':'+n;if(!timers.has(k)){let old=previousTimers.get(k)||0,now=Math.floor(time/n);timers.set(k,now>old);previousTimers.set(k,now)}ok=timers.get(k);break}case 'exists':ok=pick(s,id).length>0;break;case 'filter':{let matches=pick(s,id).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id).filter(o=>!pick(s,other).some(b=>overlap(o,b)&&(c.kind==='overlap'||!previousPairs.has(pairKey(o,b)))));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id))for(let b of pick(s,other)){if(!overlap(o,b))continue;let k=pairKey(o,b);if(c.kind==='collision'&&previousPairs.has(k))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function action(a,s,index){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false};callStack.push(local);try{executeEvent(def,s,index)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id)){let v;switch(a.kind){case 'destroy':o.dead=true;break;case 'animation':o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
- function executeEvent(e,scope={},index=0){if(e.disabled)return;try{let scopes=[scope];if(e.mode==='or'&&e.conditions.length){let matches=e.conditions.flatMap((c,i)=>condition(c,scope,e.id+':'+i,index));let seen=new Set();scopes=matches.filter(s=>{let k=JSON.stringify(Object.keys(s).sort().map(id=>[id,s[id].map(o=>o.id).sort()]));if(seen.has(k))return false;seen.add(k);return true})}else for(let [i,c] of e.conditions.entries()){scopes=scopes.flatMap(s=>condition(c,s,e.id+':'+i,index));if(!scopes.length)break}for(let s of scopes){let repeat=clamp(Math.floor(Number(expr(e.repeat||'1',s,null,index)))||0,0,1000);for(let j=0;j<repeat;j++){for(let a of e.actions){action(a,s,j);if(callStack.at(-1)?.returned)return}for(let child of e.children||[]){executeEvent(child,s,j);if(callStack.at(-1)?.returned)return}}}}catch(err){report(err)}}
+ function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
+ function action(a,s,index,owner){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false};callStack.push(local);try{executeEvent(def,s,index,owner)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'animation':o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function executeEvent(e,scope={},index=0,owner){if(e.disabled)return;try{let scopes=[scope];if(e.mode==='or'&&e.conditions.length){let matches=e.conditions.flatMap((c,i)=>condition(c,scope,e.id+':'+i,index,owner));let seen=new Set();scopes=matches.filter(s=>{let k=JSON.stringify(Object.keys(s).sort().map(id=>[id,s[id].map(o=>o.id).sort()]));if(seen.has(k))return false;seen.add(k);return true})}else for(let [i,c] of e.conditions.entries()){scopes=scopes.flatMap(s=>condition(c,s,e.id+':'+i,index,owner));if(!scopes.length)break}for(let s of scopes){let repeat=clamp(Math.floor(Number(expr(e.repeat||'1',s,null,index,owner)))||0,0,1000);for(let j=0;j<repeat;j++){for(let a of e.actions){action(a,s,j,owner);if(callStack.at(-1)?.returned)return}for(let child of e.children||[]){executeEvent(child,s,j,owner);if(callStack.at(-1)?.returned)return}}}}catch(err){report(err)}}
  function moveAxis(o,dx,dy,solids){o.x+=dx;for(let b of solids)if(overlap(o,b)){if(dx>0)o.x=b.x-o.w;else if(dx<0)o.x=b.x+b.w;o.vx=0}o.y+=dy;for(let b of solids)if(overlap(o,b)){if(dy>0){o.y=b.y-o.h;o.ground=true}else if(dy<0)o.y=b.y+b.h;o.vy=0}}
- function tAnim(o){let sh=types[o.type].sheet;return sh&&sh.count>0&&sh.fps>0&&sh.w>0&&sh.h>0&&sh.cols>0}function behaviors(){let solids=objects.filter(o=>!o.dead&&types[o.type].behaviors?.solid);for(let o of objects){if(o.dead)continue;let b=types[o.type].behaviors||{},speed=Number(b.speed)||150;let dx=(keyDown('right')||keyDown('d')?1:0)-(keyDown('left')||keyDown('a')?1:0),dy=(keyDown('down')||keyDown('s')?1:0)-(keyDown('up')||keyDown('w')?1:0);if(b.move8){let n=Math.hypot(dx,dy)||1;moveAxis(o,dx*speed*dt/n,dy*speed*dt/n,solids)}if(b.platform){if((pressed.has(' ')||pressed.has('arrowup')||pressed.has('w'))&&o.ground)o.vy=-(Number(b.jump)||380);o.vy+= (Number(b.gravity)||950)*dt;o.ground=false;moveAxis(o,dx*speed*dt,o.vy*dt,solids)}if(b.bullet){let rad=o.angle*Math.PI/180;o.x+=Math.cos(rad)*speed*dt;o.y+=Math.sin(rad)*speed*dt;if(b.bounce&&(o.x<0||o.y<0||o.x+o.w>layout.width||o.y+o.h>layout.height)){if(o.x<0||o.x+o.w>layout.width)o.angle=180-o.angle;if(o.y<0||o.y+o.h>layout.height)o.angle=-o.angle;o.x=clamp(o.x,0,layout.width-o.w);o.y=clamp(o.y,0,layout.height-o.h)}}if(tAnim(o)){let sh=types[o.type].sheet;o.animTime=(o.animTime||0)+dt;o.animFrame=Math.floor(o.animTime*sh.fps)%sh.count;}if(b.rotate)o.angle+=Number(b.rotation||90)*dt;if(b.fade){o.opacity-=dt/(Number(b.fadeTime)||1);if(o.opacity<=0)o.dead=true}if(b.bound){o.x=clamp(o.x,0,layout.width-o.w);o.y=clamp(o.y,0,layout.height-o.h)}}}
+ function runBuiltInBehaviors() {
+  solids = objects.filter(object => !object.dead && behaviorPlans.get(object.type).solid);
+  const inputAxis = (positive, negative) => Number(positive) - Number(negative);
+  const environment = {
+   dt, layout, clamp,
+   horizontal: inputAxis(keyDown('right') || keyDown('d'), keyDown('left') || keyDown('a')),
+   vertical: inputAxis(keyDown('down') || keyDown('s'), keyDown('up') || keyDown('w')),
+   jumpPressed: pressed.has(' ') || pressed.has('arrowup') || pressed.has('w'),
+   move: (object, dx, dy) => moveAxis(object, dx, dy, solids),
+  };
+  for (const object of objects) {
+   if (object.dead) continue;
+   const { builtIn } = behaviorPlans.get(object.type);
+   for (const { definition, settings } of builtIn) {
+    if (!definition.afterAnimation) definition.step(object, settings, environment);
+   }
+   const animation = types[object.type].sheet;
+   if (animation && animation.count > 0 && animation.fps > 0 && animation.w > 0 && animation.h > 0 && animation.cols > 0) {
+    object.animTime = (object.animTime || 0) + dt;
+    object.animFrame = Math.floor(object.animTime * animation.fps) % animation.count;
+   }
+   for (const { definition, settings } of builtIn) {
+    if (definition.afterAnimation) definition.step(object, settings, environment);
+   }
+  }
+ }
+
+ function timerFired(eventId, interval, owner) {
+  const seconds = Math.max(.016, interval);
+  const key = `${owner?.sheet.id || ''}:${eventId}:${seconds}`;
+  const current = owner?.timers ?? timers;
+  const previous = owner?.previousTimers ?? previousTimers;
+  if (!current.has(key)) {
+   const elapsed = owner ? time - owner.startedAt : time;
+   const count = Math.floor(elapsed / seconds);
+   current.set(key, count > (previous.get(key) || 0));
+   previous.set(key, count);
+  }
+  return current.get(key);
+ }
+
+ function runCustomBehaviors() {
+  for (let i = 0, count = objects.length; i < count; i++) {
+   const object = objects[i];
+   const clock = instanceClocks.get(object);
+   if (object.dead || !clock) continue;
+   const timers = new Map();
+   for (const { sheet, settings } of behaviorPlans.get(object.type).custom) {
+    const owner = { ...clock, object, sheet, settings, timers };
+    const scope = { [SELF_TARGET]: [object] };
+    for (const event of sheet.events) {
+     if (object.dead) break;
+     executeEvent(event, scope, 0, owner);
+    }
+   }
+   clock.created = false;
+  }
+ }
  function draw(){if(renderer.render(layout,objects,types))return;ctx.imageSmoothingEnabled=false;ctx.fillStyle=layout.background||'#172332';ctx.fillRect(0,0,canvas.width,canvas.height);for(let o of objects){if(o.dead||!o.visible)continue;let t=types[o.type];ctx.save();ctx.translate(o.x+o.w/2,o.y+o.h/2);ctx.rotate(o.angle*Math.PI/180);ctx.globalAlpha=clamp(o.opacity,0,1);drawObject(ctx,t,o,images);ctx.restore()}}
- function step(delta=1/60){if(paused)return;let started=performance.now();dt=clamp(delta,0,.05);time+=dt;frame++;timers.clear();changed=false;behaviors();currentPairs=new Set();let buckets=new Map(),checked=new Set(),large=[];for(let o of objects){if(o.dead)continue;let x0=Math.floor(o.x/64),y0=Math.floor(o.y/64),x1=Math.floor((o.x+o.w)/64),y1=Math.floor((o.y+o.h)/64);if(![x0,y0,x1,y1].every(Number.isFinite)||(x1-x0+1)*(y1-y0+1)>512){large.push(o);continue}for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){let k=x+','+y,b=buckets.get(k)||[];for(let other of b){let pair=pairKey(o,other);if(!checked.has(pair)){checked.add(pair);if(overlap(o,other))currentPairs.add(pair)}}b.push(o);buckets.set(k,b)}}for(let o of large)for(let other of objects)if(!other.dead&&overlap(o,other))currentPairs.add(pairKey(o,other));for(let e of layout.events)if(!e.functionName)executeEvent(e);objects=objects.filter(o=>!o.dead);previousPairs=currentPairs;first=false;pressed.clear();mouse.clicked=false;if(nextLayout)enter(nextLayout);draw();hooks.tick?.({ms:performance.now()-started,fps:dt?1/dt:0,renderer:renderer.engine,vars:{...vars},count:objects.length,layout:layout.name,frame,time,objects:objects.map(o=>({...o,vars:{...o.vars}}))})}
+ function collectCollisionPairs() {
+  const pairs = new Set(), buckets = new Map(), checked = new Set(), large = [];
+  for (const object of objects) {
+   if (object.dead) continue;
+   const x0 = Math.floor(object.x / 64), y0 = Math.floor(object.y / 64);
+   const x1 = Math.floor((object.x + object.w) / 64), y1 = Math.floor((object.y + object.h) / 64);
+   if (![x0, y0, x1, y1].every(Number.isFinite) || (x1 - x0 + 1) * (y1 - y0 + 1) > 512) {
+    large.push(object);
+    continue;
+   }
+   for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+     const key = `${x},${y}`;
+     const bucket = buckets.get(key) ?? [];
+     for (const other of bucket) {
+      const pair = pairKey(object, other);
+      if (checked.has(pair)) continue;
+      checked.add(pair);
+      if (overlap(object, other)) pairs.add(pair);
+     }
+     bucket.push(object);
+     buckets.set(key, bucket);
+    }
+   }
+  }
+  for (const object of large) {
+   for (const other of objects) {
+    if (!other.dead && overlap(object, other)) pairs.add(pairKey(object, other));
+   }
+  }
+  return pairs;
+ }
+
+ function step(delta = 1 / 60) {
+  if (paused) return;
+  const started = performance.now();
+  dt = clamp(delta, 0, .05);
+  time += dt;
+  frame++;
+  timers.clear();
+  changed = false;
+  runBuiltInBehaviors();
+  // Custom sheets see the same contacts even if an earlier sheet moves an object.
+  if (checksBehaviorCollisions) currentBehaviorPairs = collectCollisionPairs();
+  runCustomBehaviors();
+  if (checksBehaviorCollisions) previousBehaviorPairs = currentBehaviorPairs;
+  const layoutPairs = collectCollisionPairs();
+  for (const event of layout.events) if (!event.functionName) executeEvent(event);
+  objects = objects.filter(object => !object.dead);
+  previousPairs = layoutPairs;
+  first = false;
+  pressed.clear();
+  mouse.clicked = false;
+  if (nextLayout) enter(nextLayout);
+  draw();
+  hooks.tick?.({
+   ms: performance.now() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine,
+   vars: { ...vars }, count: objects.length, layout: layout.name, frame, time,
+   objects: objects.map(object => ({ ...object, vars: { ...object.vars } })),
+  });
+ }
  function loop(now){if(!running)return;let d=last?(now-last)/1000:1/60;last=now;step(d);raf=requestAnimationFrame(loop)}
  function key(e,down){let k=norm(e.key);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k);if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault()}
  const kd=e=>key(e,true),ku=e=>key(e,false),blur=()=>{keys.clear();pressed.clear();mouse.down=false},mm=e=>{let r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)*canvas.width/r.width;mouse.y=(e.clientY-r.top)*canvas.height/r.height},md=e=>{mm(e);mouse.down=true;mouse.clicked=true},mu=()=>mouse.down=false;

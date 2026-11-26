@@ -17,6 +17,19 @@ locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailab
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
 
+## Behaviors
+
+Select an object type and click **Add Behavior** in the inspector. The picker
+offers built-ins such as Platformer, Bullet, and Solid, plus any custom behaviors
+defined in the project. Attached behaviors show their own settings in the inspector.
+
+Use **Create Custom Behavior** to attach a blank visual event sheet. Use **Self**
+to target the instance running the sheet, and **On instance created** to initialize
+it. **Behavior Settings** defines defaults that attachments can override and events
+can read as `Settings.name`. You can attach the same custom sheet to multiple object
+types. Built-ins are implemented in `behaviors.js`, and the editor converts older
+projects' behavior checkboxes when opening their JSON.
+
 ## Package a desktop app
 
 Run these commands on Windows, macOS, or Linux to build for that host.

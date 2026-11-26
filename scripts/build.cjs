@@ -11,6 +11,7 @@ const notices = [source('LICENSE'), fs.readFileSync(path.join(pixiRoot, 'LICENSE
 const html = source('shell.html')
   .replace('/*PIXI*/', () => pixi.toString('base64'))
   .replace('/*LICENSES*/', () => notices.join('\n'))
+  .replace('/*BEHAVIORS*/', () => source('behaviors.js'))
   .replace('/*RUNTIME*/', () => source('runtime.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
