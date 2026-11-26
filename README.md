@@ -187,6 +187,32 @@ and `add` operations in order on each picked object. Actions can write
 `x`, `y`, `w`, `h`, `angle`, `opacity`, `vx`, and `vy`, or an instance
 variable. Use `set` to change `visible` or `text`.
 
+## Menus, HUDs, and input
+
+Open **UI** to create a screen and add buttons, labels, or bars. Drag controls
+on the viewport or edit their anchor, offset, size, and colors in the inspector.
+Set **Starting UI** for each layout. Layouts can share screens, and a screen can
+pause gameplay while its controls are active.
+
+Buttons can open a layout, restart it, show a different screen, or restore the
+layout's starting UI. Choose **Trigger visual event** on a button and add **On
+button activated** to run its event. To run a button event on a paused screen, put the activation condition
+on the top-level row. Labels can display global values with tokens such as
+`{Score}`. Bars read a numeric global and use the maximum set in the inspector.
+
+Open **Input Actions** from the UI or Event Sheet toolbar to bind names to
+keyboard keys and standard gamepad buttons. Use **On action pressed** for a
+one-shot input or **Is action held** for continuous input. The menu actions
+control focus and confirmation. Change each button's **Focus order** to set
+the sequence. The Menu Back action restores the layout's starting UI from a
+menu overlay. You can turn off menu navigation on a screen such as a gameplay HUD.
+
+Choose **Load Menu Demo** in the UI workspace to try the Shard Runner title
+screen, HUD, and pause menu. Move with the arrow keys or D-pad and pause with
+Escape or Start. The top toolbar's **Settings** panel contains renderer
+selection, event execution mode, and the default layout grid. Layout, Tilemap,
+Animator, and UI have workspace-specific toolbars.
+
 ## Export a game
 
 Open **Export Game** to set the game title, version, icon, and startup layout.

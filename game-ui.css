@@ -1,0 +1,27 @@
+.void-ui-host { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
+.void-ui-host > canvas { display: block; }
+.void-ui-layer { position: absolute; inset: 0 auto auto 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.void-ui-layer.void-ui-paused { background: #0b1323ba; pointer-events: auto; }
+.void-ui-control {
+ position: absolute; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+ overflow: hidden; text-align: center; white-space: pre-wrap; line-height: 1.15;
+ font-family: system-ui, sans-serif; font-weight: 650; pointer-events: none; padding: 0;
+}
+button.void-ui-button {
+ background: var(--void-ui-color); border: 1px solid #ffffff55; border-radius: .38em;
+ cursor: pointer; pointer-events: auto;
+}
+button.void-ui-button:hover { filter: brightness(1.2); background: var(--void-ui-color); }
+.void-ui-focused, button.void-ui-button:focus-visible { outline: 2px solid #affde0; outline-offset: -3px; }
+.void-ui-bar { isolation: isolate; border: 1px solid #ffffff70; border-radius: .32em; background: #111d2d; }
+.void-ui-bar::before { content: ""; position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--void-ui-value); background: var(--void-ui-color); }
+.void-ui-bar span { text-shadow: 0 1px 3px #121722; }
+
+#ui-board { align-items: center; }
+.ui-editor-stage {
+ position: relative; flex: none; width: min(100%, 850px); overflow: hidden; touch-action: none;
+ background: #203144; box-shadow: 0 8px 30px #0008, 0 0 0 1px #56677a;
+}
+.ui-editor-stage.void-ui-paused { background: #152233; }
+.ui-editor-stage .void-ui-control { pointer-events: auto; cursor: move; touch-action: none; }
+.ui-editor-stage .ui-editor-selected { outline: 2px solid #6cd5ff; outline-offset: -2px; }

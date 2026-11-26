@@ -288,6 +288,10 @@ function createRuntime(project, canvas, hooks={}) {
  function report(e){let msg=String(e.message||e);if(!errors.has(msg)){errors.add(msg);hooks.error?.(msg)}}
  const sheets = new Map(p.behaviorSheets.map(sheet => [sheet.id, sheet]));
  const extensions = extensionRegistry(p.extensions);
+ const input = createNamedInput(p), uiScreens = new Map((p.uiScreens ?? []).map(screen => [screen.id,screen]));
+ const uiActivations = new Set(), uiQueue = [];
+ let uiScreen;
+ const overlay = createGameOverlay(hooks.uiLayer,canvas,id => uiQueue.push({ screen: uiScreen,id }));
  const atlases = new Map((p.tilesets ?? []).map(atlas => [atlas.id, atlas]));
  const enums = Object.fromEntries((p.enums ?? []).map(enumType => [enumType.name,
   Object.fromEntries(enumType.values.map(value => [value.name, tileEnumToken(enumType, value)]))]));
@@ -342,14 +346,46 @@ function createRuntime(project, canvas, hooks={}) {
   previousTimers.clear();
   changed = true;
   nextLayout = null;
+  uiQueue.length = 0;
+  showUI(layout.uiScreen,true);
   hooks.layout?.(layout.name);
+ }
+ function showUI(id, force = false) {
+  const screen = uiScreens.get(id);
+  if (id && !screen && !force) { report(Error('Unknown UI screen ' + id)); return; }
+  if (!force && screen === uiScreen) return;
+  uiScreen = screen;
+  overlay?.show(screen,vars);
+ }
+ function canGoBack() {
+  return uiScreen && uiScreen.id !== layout.uiScreen && (uiScreen.pause || uiScreen.navigation !== false);
+ }
+ function readUIInput() {
+  let pads = [];
+  try { pads = Array.from(navigator.getGamepads?.() ?? []); } catch {}
+  input.update(keys,pressed,pads);
+  uiActivations.clear();
+  const resumed = canGoBack() && input.pressed('menu-back');
+  if (resumed) showUI(layout.uiScreen);
+  if (uiScreen?.navigation !== false) overlay?.navigate(input);
+  for (const {screen,id} of uiQueue.splice(0)) {
+   if (screen !== uiScreen) continue;
+   const item = screen?.items.find(control => control.id === id && control.kind === 'button');
+   if (!item) continue;
+   uiActivations.add(id);
+   if (item.command === 'layout' && p.layouts.some(candidate => candidate.id === item.target)) nextLayout = item.target;
+   if (item.command === 'restart') nextLayout = layout.id;
+   if (item.command === 'show') showUI(item.target);
+   if (item.command === 'restore') showUI(layout.uiScreen);
+  }
+  return resumed;
  }
  const overlap=(a,b)=>a!==b&&a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
  const all=id=>objects.filter(o=>!o.dead&&o.type===id);
  const pick=(scope,id,owner)=> (scope[id] || (id===SELF_TARGET ? (owner ? [owner.object] : []) : all(id))).filter(o=>!o.dead);
  const narrow=(s,id,items)=>({...s,[id]:items});
  const pairKey=(a,b)=>Math.min(a.id,b.id)+':'+Math.max(a.id,b.id);
- const norm=k=>({space:' ',spacebar:' ',left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown'}[String(k).toLowerCase()]||String(k).toLowerCase());
+ const norm=gameKeyName;
  const keyDown=k=>keys.has(norm(k));
  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
  const functions={tileHasTag, tileColumn, tileRow, min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
@@ -460,8 +496,8 @@ function createRuntime(project, canvas, hooks={}) {
   if (kind === 'navigating') return state?.status === 'moving';
   return Boolean(state?.eventFrame === frame && state.status === (kind === 'navArrived' ? 'arrived' : 'failed'));
  }
- function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);if(typeof c.kind==='string'&&c.kind.startsWith('extension/'))return extensionCondition(c,a,s,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||state.clip.name===a.clip))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function* action(a,s,index,owner,depth,parents,breakpoint){if(breakpoint)yield breakpoint;let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);if(typeof a.kind==='string'&&a.kind.startsWith('extension/')){extensionAction(a,q,s,index,owner);return}switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':case 'add':writeInstanceProperty(o,q.property,ev(q.value,o),a.kind==='add');break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);if(typeof c.kind==='string'&&c.kind.startsWith('extension/'))return extensionCondition(c,a,s,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'inputDown':ok=input.down(a.input);break;case 'inputPressed':ok=input.pressed(a.input);break;case 'uiActivated':ok=uiActivations.has(a.control);break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||state.clip.name===a.clip))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
+ function* action(a,s,index,owner,depth,parents,breakpoint){if(breakpoint)yield breakpoint;let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);if(typeof a.kind==='string'&&a.kind.startsWith('extension/')){extensionAction(a,q,s,index,owner);return}switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'showUI':showUI(q.screen);break;case 'restoreUI':showUI(layout.uiScreen);break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':case 'add':writeInstanceProperty(o,q.property,ev(q.value,o),a.kind==='add');break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
  function executionPoint(event, source, scope, owner, depth, parents, conditions, index, actionIndex, breakpoint = false) {
   const target = event.actions[actionIndex ?? 0]?.args?.object;
   const selected = new Set(Object.values(scope).flat().filter(object => !object.dead).map(object => object.id));
@@ -695,32 +731,42 @@ function createRuntime(project, canvas, hooks={}) {
   const started = clock();
   profile = debugHooks?.isProfiling?.() ? { simulation: 0, events: 0, rendering: 0, total: 0,
    sheets: Object.create(null), behaviors: Object.create(null) } : null;
-  dt = clamp(delta, 0, .05);
-  time += dt;
-  frame++;
+  const resumed = readUIInput();
+  const menuPaused = Boolean(uiScreen?.pause);
+  dt = menuPaused || resumed ? 0 : clamp(delta, 0, .05);
   timers.clear();
   changed = false;
-  particles.advance(dt);
-  runBuiltInBehaviors();
-  if (checksBehaviorCollisions) currentBehaviorPairs = collectCollisionPairs();
-  if (profile) profile.simulation = clock() - started;
   let phaseStarted = profile ? clock() : 0;
-  yield* runCustomBehaviors();
-  if (profile) { profile.events = clock() - phaseStarted; phaseStarted = clock(); }
-  if (checksBehaviorCollisions) previousBehaviorPairs = currentBehaviorPairs;
-  const layoutPairs = collectCollisionPairs();
-  if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
-  yield* runSheet(layout.events, layoutSource(layout));
-  if (profile) { profile.events += clock() - phaseStarted; phaseStarted = clock(); }
-  objects = objects.filter(object => !object.dead);
-  previousPairs = layoutPairs;
-  first = false;
+  if (!nextLayout && !menuPaused && !resumed) {
+   time += dt;
+   frame++;
+   particles.advance(dt);
+   runBuiltInBehaviors();
+   if (checksBehaviorCollisions) currentBehaviorPairs = collectCollisionPairs();
+   if (profile) { profile.simulation = clock() - started; phaseStarted = clock(); }
+   yield* runCustomBehaviors();
+   if (profile) { profile.events = clock() - phaseStarted; phaseStarted = clock(); }
+   if (checksBehaviorCollisions) previousBehaviorPairs = currentBehaviorPairs;
+   const layoutPairs = collectCollisionPairs();
+   if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
+   yield* runSheet(layout.events, layoutSource(layout));
+   if (profile) { profile.events += clock() - phaseStarted; phaseStarted = clock(); }
+   objects = objects.filter(object => !object.dead);
+   previousPairs = layoutPairs;
+   first = false;
+  } else if (!nextLayout && uiActivations.size) {
+   const clicked = layout.events.filter(event => event.conditions.some(condition =>
+    condition.kind === 'uiActivated' && !condition.invert && uiActivations.has(condition.args?.control)));
+   yield* runSheet(clicked,layoutSource(layout));
+   if (profile) { profile.events = clock() - phaseStarted; phaseStarted = clock(); }
+  }
   pressed.clear();
   mouse.clicked = false;
   if (nextLayout) enter(nextLayout);
-  else { camera.place(dt, objects); updateMouseWorld(); }
+  else if (!menuPaused) { camera.place(dt, objects); updateMouseWorld(); }
   if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
   draw();
+  overlay?.update(vars);
   if (profile) { profile.rendering = clock() - phaseStarted; profile.total = clock() - started; }
   hooks.tick?.({
    ms: clock() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine, execution,
@@ -797,7 +843,15 @@ function createRuntime(project, canvas, hooks={}) {
   raf = requestAnimationFrame(loop);
  }
  function key(e,down){let k=norm(e.key);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k);if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault()}
- const kd=e=>{if(!debugHooks||!e.target?.closest?.('button,input,select,textarea'))key(e,true)},ku=e=>{if(!debugHooks||keys.has(norm(e.key)))key(e,false)},blur=()=>{keys.clear();pressed.clear();mouse.down=false},mm=e=>{const r=canvas.getBoundingClientRect();pointer={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};updateMouseWorld()},md=e=>{mm(e);mouse.down=true;mouse.clicked=true},mu=()=>mouse.down=false;
+ const kd=e=>{
+  const ownsFocus = overlay?.owns(e.target);
+  if (!ownsFocus && e.target?.closest?.('button,input,select,textarea')) return;
+  const name = norm(e.key);
+  if ((canGoBack() && input.isMenuKey(name,true)) ||
+      (uiScreen?.navigation !== false && overlay?.canNavigate && input.isMenuKey(name,false)) ||
+      (name === 'escape' && input.isGameplayKey(name))) e.preventDefault();
+  key(e,true);
+ },ku=e=>{if(keys.has(norm(e.key)))key(e,false)},blur=()=>{keys.clear();pressed.clear();mouse.down=false},mm=e=>{const r=canvas.getBoundingClientRect();pointer={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};updateMouseWorld()},md=e=>{mm(e);mouse.down=true;mouse.clicked=true},mu=()=>mouse.down=false;
  let audio=null;function beep(f,d){try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();let osc=audio.createOscillator(),gain=audio.createGain();osc.type='triangle';osc.frequency.value=clamp(f||440,40,4000);gain.gain.setValueAtTime(.07,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+clamp(d||.1,.02,1));osc.connect(gain);gain.connect(audio.destination);osc.start();osc.stop(audio.currentTime+clamp(d||.1,.02,1))}catch{}}
  function reset(id){discardFrame();frame=0;vars=Object.fromEntries(p.globals.map(v=>[v.name,structuredClone(v.value)]));enter(id);draw();debugHooks?.onReset?.(paused)}
  async function startRenderer() {
@@ -816,6 +870,6 @@ function createRuntime(project, canvas, hooks={}) {
    if (running) hooks.renderer?.('Canvas 2D · ' + error.message);
   }
  }
- reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause,step,reset,debugCommand,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame,execution}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
+ reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close();overlay?.remove()},pause,step,reset,debugCommand,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame,execution,ui:uiScreen?.id??'',menuPaused:Boolean(uiScreen?.pause)}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
 }
 function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}
