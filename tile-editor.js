@@ -314,10 +314,10 @@ function drawTileEnumIcons(ctx,map,atlases,layer) {
     image.addEventListener('load',drawMapEditor,{once:true});
    }
    if (!image.complete || !image.naturalWidth) continue;
-   const w = icon.w ?? icon.sheet?.w ?? image.naturalWidth, h = icon.h ?? icon.sheet?.h ?? image.naturalHeight;
+   const w = icon.w ?? image.naturalWidth, h = icon.h ?? image.naturalHeight;
    const scale = size/Math.max(w,h);
    ctx.globalAlpha = part.opacity;
-   ctx.drawImage(image,icon.x ?? icon.sheet?.margin ?? 0,icon.y ?? icon.sheet?.margin ?? 0,w,h,x-w*scale/2,y-h*scale/2,w*scale,h*scale);
+   ctx.drawImage(image,icon.x,icon.y,w,h,x-w*scale/2,y-h*scale/2,w*scale,h*scale);
   }
  }
  ctx.restore();

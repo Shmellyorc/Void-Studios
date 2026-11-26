@@ -45,7 +45,7 @@ function dataObjectBinding(type) {
   (type.dataRow ? '<p class="muted">Use the row’s columns as instance variables.</p>' : '') + '</div>';
 }
 
-function dataCell(row,column) {
+function dataCell(row,column,artworkOptions) {
  const value = row.values[column.id] ?? dataFieldDefault(column.type);
  const key = 'data-cell.' + row.id + '.' + column.id;
  if (column.type === 'boolean') return checkbox(column.name,key,value);
@@ -54,7 +54,11 @@ function dataCell(row,column) {
   const choices = (type?.values ?? []).map(member=>[tileEnumToken(type,member),member.name]);
   return select(column.name,key,value,[['','None'],...dataOptionsWithMissing(choices,value)]);
  }
- if (column.type === 'sprite') return select(column.name,key,value,[['','None'],...dataOptionsWithMissing(dataSpriteOptions(),value)]);
+ if (column.type === 'sprite') {
+  const label = studioArtworkLabel(value,artworkOptions);
+  return `<button type="button" class="data-artwork-cell" data-act="data:artwork:${esc(row.id)}:${esc(column.id)}"
+   data-artwork-reference="${esc(value)}" title="${esc(label)}" aria-label="${esc(column.name+': '+label)}"><span>${esc(label)}</span></button>`;
+ }
  return field(column.name,key,value,column.type === 'number' ? 'number' : 'text');
 }
 
@@ -89,6 +93,7 @@ function renderDataWorkspace() {
    button('Delete Enum','data:deleteEnum','danger ghost') + '</div>' : '');
   return;
  }
+ const artworkOptions = new Map(table?.columns.some(column=>column.type === 'sprite') ? studioArtworkOptions() : []);
  content.innerHTML = file ? '<div class="data-section-tools">' + button('New Table…','data:newTable','primary') +
   (table ? select('Table','data-table-choice',table.id,file.tables.map(item=>[item.id,item.name])) +
    button('Add Column…','data:newColumn') + button('Add Row…','data:newRow') : '') + '</div>' +
@@ -97,11 +102,15 @@ function renderDataWorkspace() {
     <small>${esc(column.type === 'enum' ? P.enums.find(item=>item.id === column.enum)?.name ?? 'Missing enum' : studioDataTypes[column.type])}</small></th>`).join('')
   }<th scope="col"><span class="data-sr-only">Row actions</span></th></tr></thead><tbody>${
    table.rows.map(row=>'<tr><td>'+field('Row key','data-row-key.'+row.id,row.key)+'</td>'+
-    table.columns.map(column=>'<td>'+dataCell(row,column)+'</td>').join('')+
+    table.columns.map(column=>'<td>'+dataCell(row,column,artworkOptions)+'</td>').join('')+
     '<td>'+button('×','data:removeRow:'+row.id,'danger ghost')+'</td></tr>').join('')
   }</tbody></table></div>` + (!table.rows.length ? '<div class="empty">Add a row to enter values.</div>' : '') :
    '<div class="empty">Create a table to store related data.</div>') :
   '<div class="empty">Create a data file or load the Bestiary demo.</div>';
+ for (const button of content.querySelectorAll('[data-artwork-reference]')) {
+  const preview = studioDataPortrait(P,button.dataset.artworkReference);
+  if (preview) button.prepend(preview);
+ }
  inspector.innerHTML = '<div class="panelhead">DATA PROPERTIES</div>' +
   (file ? '<div class="prop-group">' + field('File name','data-file-name',file.name) + button('Delete Data File','data:deleteFile','danger ghost') + '</div>' : '') +
   (table ? '<div class="prop-group">' + field('Table name','data-table-name',table.name) +
@@ -154,21 +163,10 @@ function dataOpenFile(id) {
 }
 
 function editDataEnumIcon(member) {
- const ref = member.icon ?? '', [kind,atlasId,x,y] = ref.split('/');
- const source = kind === 'tile' ? dataReference(kind,atlasId) : ref;
- const options = [...dataSpriteOptions(),...P.tilesets.map(atlas=>[dataReference('tile',atlas.id),atlas.name + ' · Tileset'])];
- simple('Icon for ' + member.name,select('Artwork','source',source,[['','None'],...dataOptionsWithMissing(options,source)]) +
-  '<div id="data-icon-tile" class="two" hidden>' + field('Column (from 0)','column',x ?? 0,'number') +
-  field('Row (from 0)','row',y ?? 0,'number') + '</div>',values=>{
-   const tile = values.source.startsWith('tile/');
-   const next = tile ? dataReference(values.source,values.column,values.row) : values.source;
-   if (next && !studioDataSprite(P,next)) throw Error('Choose existing artwork or valid tileset coordinates');
-   change(()=>{ if (next) member.icon = next; else delete member.icon; });
+ openStudioArtworkPicker('Icon for ' + member.name,member.icon ?? '',reference=>{
+  if (reference === (member.icon ?? '')) return;
+  change(()=>{ if (reference) member.icon = reference; else delete member.icon; });
  });
- const input = $('#dialogbody [data-field="source"]');
- const sync = ()=>{ $('#data-icon-tile').hidden = !input.value.startsWith('tile/'); };
- input.onchange = sync;
- sync();
 }
 
 function clearRemovedEnumMembers(tokens) {
@@ -188,7 +186,7 @@ function clearRemovedEnumMembers(tokens) {
  }
 }
 
-function dataAction(action,id) {
+function dataAction(action,id,columnId) {
  const file = dataFile(), table = dataTable(), enumeration = dataEnum();
  const member = enumeration?.values.find(item=>item.id === id);
  switch (action) {
@@ -213,6 +211,13 @@ function dataAction(action,id) {
   }); break;
   case 'newColumn': if (table) return editDataColumn(table); break;
   case 'column': if (table) return editDataColumn(table,table.columns.find(column=>column.id === id)); break;
+  case 'artwork': {
+   const row = table?.rows.find(item=>item.id === id), column = table?.columns.find(item=>item.id === columnId);
+   if (!row || column?.type !== 'sprite') break;
+   return openStudioArtworkPicker(column.name + ' · ' + row.key,row.values[column.id] ?? '',reference=>{
+    if (reference !== (row.values[column.id] ?? '')) change(()=>{ row.values[column.id] = reference; });
+   });
+  }
   case 'removeRow':
    if (table && confirm('Delete this data row?')) change(()=>{ table.rows = table.rows.filter(row=>row.id !== id); });
    break;
