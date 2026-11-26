@@ -38,7 +38,7 @@ function loadPixi() {
  return pixiPromise;
 }
 
-function createPixiView(canvas, { report = () => {} } = {}) {
+function createPixiView(canvas, { report = () => {}, fonts } = {}) {
  const entries = new Map(), textures = new Map(), images = new Map(), particleSprites = [[], []];
  const savedStyle = canvas.getAttribute('style');
  let renderer, stage, worldStage, objectsStage, particleStages, hudStage, tileStages, tileTextures = [], lastTiles, host, lastFrame;
@@ -122,6 +122,8 @@ function createPixiView(canvas, { report = () => {} } = {}) {
 
  function textureFor(type, object, key) {
   if (textures.has(key)) return textures.get(key);
+  const font = type.kind === 'text' ? loadStudioFont(fonts,type.font) : null;
+  if (font && !font.ready && !font.failed) return null;
   if (type.image) {
    let image = images.get(type.image);
    if (!image) {
@@ -137,7 +139,7 @@ function createPixiView(canvas, { report = () => {} } = {}) {
   bitmap.height = Math.max(1, Math.min(4096, Math.ceil(object.h)));
   const context = bitmap.getContext('2d');
   context.translate(bitmap.width / 2, bitmap.height / 2);
-  drawObject(context, type, { ...object, w: bitmap.width, h: bitmap.height }, images);
+  drawObject(context, type, { ...object, w: bitmap.width, h: bitmap.height }, images, fonts);
   const texture = PIXI.Texture.from(bitmap);
   texture.source.scaleMode = 'nearest';
   textures.set(key, texture);
@@ -284,7 +286,8 @@ function createRuntime(project, canvas, hooks={}) {
  let frameWork, stopPoint, stepRule, pausedAt, profile;
  let excludedTime = 0;
  const clock = () => performance.now() - excludedTime;
- const renderer=createPixiView(canvas,{report:m=>hooks.renderer?.(m)}); const types=Object.fromEntries(p.types.map(t=>[t.id,t])); const byName=Object.fromEntries(p.types.map(t=>[t.name,t.id]));
+ const fonts=studioFontLibrary(p);
+ const renderer=createPixiView(canvas,{report:m=>hooks.renderer?.(m),fonts}); const types=Object.fromEntries(p.types.map(t=>[t.id,t])); const byName=Object.fromEntries(p.types.map(t=>[t.name,t.id]));
  function report(e){let msg=String(e.message||e);if(!errors.has(msg)){errors.add(msg);hooks.error?.(msg)}}
  const animationPlans=new Map(p.types.map(type=>[type.id,planAnimationMachine(type)]).filter(([,plan])=>plan));
  const sheets = new Map(p.behaviorSheets.map(sheet => [sheet.id, sheet]));
@@ -764,14 +767,14 @@ function createRuntime(project, canvas, hooks={}) {
   const orderedObjects = tileObjectOrder(layout, objects);
   for (const object of orderedObjects) {
    const type = types[object.type];
-   if (!object.dead && object.visible && !type.screenSpace) drawObjectPose(ctx, type, object, images);
+   if (!object.dead && object.visible && !type.screenSpace) drawObjectPose(ctx, type, object, images, fonts);
   }
   drawSceneParticles(ctx, particles.items, images, false);
   if (artwork?.[1]) ctx.drawImage(artwork[1], 0, 0);
   ctx.restore();
   for (const object of orderedObjects) {
    const type = types[object.type];
-   if (!object.dead && object.visible && type.screenSpace) drawObjectPose(ctx, type, object, images);
+   if (!object.dead && object.visible && type.screenSpace) drawObjectPose(ctx, type, object, images, fonts);
   }
   drawSceneParticles(ctx, particles.items, images, true);
  }
@@ -1011,4 +1014,4 @@ function createRuntime(project, canvas, hooks={}) {
  return {vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame,execution,ui:uiScreen?.id??'',menuPaused:Boolean(uiScreen?.pause),volume:sound.channels.master,audio:sound};
  },key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
 }
-function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}
+function drawObject(ctx,t,o,images,fonts){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){drawStudioTextObject(ctx,t,o,fonts);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}

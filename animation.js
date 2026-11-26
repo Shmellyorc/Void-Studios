@@ -156,13 +156,13 @@ function advanceSpriteAnimation(object, type, seconds) {
  }
 }
 
-function drawObjectPose(ctx, type, object, images) {
+function drawObjectPose(ctx, type, object, images, fonts) {
  const pose = object.pose ?? {};
  ctx.save();
  ctx.translate(object.x + object.w / 2 + (pose.x ?? 0), object.y + object.h / 2 + (pose.y ?? 0));
  ctx.rotate(((object.angle || 0) + (pose.angle ?? 0)) * Math.PI / 180);
  ctx.scale(pose.scaleX ?? 1, pose.scaleY ?? 1);
  ctx.globalAlpha *= Math.max(0, Math.min(1, (object.opacity ?? 1) * (pose.opacity ?? 1)));
- drawObject(ctx, type, object, images);
+ drawObject(ctx, type, object, images, fonts);
  ctx.restore();
 }

@@ -27,6 +27,7 @@ function projectItems(project) {
  add('image','assets',project.types.filter(type => type.image && !type.spriteDocument),type => type.name + ' · Image');
  add('tileset','assets',project.tilesets);
  add('audio','assets',project.audioClips);
+ add('font','assets',project.fonts);
  add('global','globals',project.globals);
  add('data-file','data',project.dataFiles);
  add('data-enum','data',project.enums);
@@ -125,7 +126,7 @@ function renderProjectPanel() {
  if (projectPanel.selected && !projectPanel.items.has(projectPanel.selected) &&
      !folders.has(projectPanel.selected) && !Object.hasOwn(projectBranches,projectPanel.selected)) projectPanel.selected = null;
  const icons = { scene:'▧', screen:'▤', 'layout-sheet':'⌘', shared:'⌘', behavior:'⌘', object:'◇',
-  prefab:'◈', sprite:'▣', image:'▣', tileset:'▦', audio:'♫', global:'𝑥', 'data-file':'▦', 'data-enum':'≡' };
+  prefab:'◈', sprite:'▣', image:'▣', tileset:'▦', audio:'♫', font:'Aa', global:'𝑥', 'data-file':'▦', 'data-enum':'≡' };
  let html = '';
  const stack = Object.entries(projectBranches).map(([key,[name,icon]]) => ({ key,name,icon,directory:true,depth:0 })).reverse();
  while (stack.length) {
@@ -206,6 +207,7 @@ function openProjectItem(item) {
    tab = 'audio';
    break;
   case 'global': return editProjectGlobal(data);
+  case 'font': return showStudioFonts(data.id);
   case 'data-file': return dataAction('open',data.id);
   case 'data-enum': return dataAction('enums',data.id);
  }
@@ -417,7 +419,7 @@ function setupProjectPanel() {
   const actions = {
    scene:'addLayout', screen:'ui:newScreen', sheet:'evt:newSheet', object:'addType', prefab:'prefab:create',
    global:'addGlobal', sprite:'sprite:new', image:'sprite:import', tileset:'tile:import', audio:'audio:import',
-   data:'data:newFile', enum:'data:newEnum',
+   data:'data:newFile', enum:'data:newEnum', font:'font:open',
   };
   if (Object.hasOwn(actions,command)) act(actions[command]);
  });

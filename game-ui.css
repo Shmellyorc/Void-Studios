@@ -39,6 +39,9 @@ body:has(.void-ui-window-fullscreen) > :not(.void-ui-window-fullscreen):is(heade
 .void-ui-bar { isolation: isolate; border: 1px solid #ffffff70; border-radius: .32em; background: #111d2d; }
 .void-ui-bar::before { content: ""; position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--void-ui-value); background: var(--void-ui-color); }
 .void-ui-bar span { text-shadow: 0 1px 3px #121722; }
+.studio-bitmap-caption { display:inline-flex; align-items:center; justify-content:center; max-width:100%; max-height:100%; vertical-align:middle; }
+.studio-bitmap-caption canvas { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
+.studio-font-readable { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .void-ui-image { container-type:size; }
 .studio-data-portrait {
  position:relative; display:block; flex:none; overflow:hidden;

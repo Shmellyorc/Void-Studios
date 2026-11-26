@@ -14,6 +14,7 @@ const uiAnchors = {
 const uiCommands = ['event','layout','restart','show','restore'];
 const uiSettingsKinds = ['slider','toggle','dropdown'];
 const uiFonts = { system:'system-ui, sans-serif', serif:'Georgia, serif', mono:'monospace' };
+const uiControlFonts = new WeakMap(), uiBitmapCaptions = new WeakMap();
 const uiStyleColors = ['color','background','hover','pressed','focus','disabled'];
 const isUISetting = item => uiSettingsKinds.includes(item.kind);
 const isUIInteractive = item => item.kind === 'button' || isUISetting(item);
@@ -40,7 +41,8 @@ function validateGameUI(project) {
  const actionIds = new Set(), screenIds = new Set(), itemIds = new Set(), styleIds = new Set();
  const colorOK = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
  for (const style of project.uiStyles) {
-  if (!idOK(style?.id) || styleIds.has(style.id) || !nameOK(style.name) || !Object.hasOwn(uiFonts,style.font) ||
+  if (!idOK(style?.id) || styleIds.has(style.id) || !nameOK(style.name) ||
+   (!Object.hasOwn(uiFonts,style.font) && !(project.fonts ?? []).some(font=>font.id === style.font)) ||
    !Number.isFinite(style.size) || style.size <= 0 || uiStyleColors.some(key => !colorOK(style[key]))) throw Error('Invalid shared UI style');
   styleIds.add(style.id);
  }
@@ -124,6 +126,29 @@ function uiSettingValue(item, vars, values) {
   values?.get(item.id) ?? (item.kind === 'slider' ? item.min : item.kind === 'dropdown' ? item.options[0] : false);
 }
 
+function paintStudioUICaption(node,text,format) {
+ if (!format?.font?.ready || format.font.family || !text) {
+  if (uiBitmapCaptions.has(node) || node.textContent !== text) node.textContent = text;
+  uiBitmapCaptions.delete(node);
+  return;
+ }
+ if (uiBitmapCaptions.get(node) === text) return;
+ const {font,size,color}=format, bitmap=studioBitmapText(font,text,color);
+ const caption=document.createElement('span'), accessible=document.createElement('span'), canvas=document.createElement('canvas');
+ caption.className='studio-bitmap-caption';
+ const scale=size/font.asset.lineHeight;
+ caption.style.width='calc('+bitmap.width*scale+' * var(--void-ui-unit))';
+ caption.style.height='calc('+bitmap.height*scale+' * var(--void-ui-unit))';
+ accessible.className='studio-font-readable';
+ accessible.textContent=text;
+ canvas.width=bitmap.width; canvas.height=bitmap.height;
+ canvas.setAttribute('aria-hidden','true');
+ canvas.getContext('2d').drawImage(bitmap,0,0);
+ caption.append(canvas);
+ node.replaceChildren(accessible,caption);
+ uiBitmapCaptions.set(node,text);
+}
+
 function updateUIControl(node, item, vars, values, data) {
  const field = studioDataBoundValue(data,item.dataField,vars[item.dataRowVariable]);
  if (item.kind === 'image') {
@@ -136,17 +161,16 @@ function updateUIControl(node, item, vars, values, data) {
   return;
  }
  const content = field !== undefined ? String(field) : uiControlContent(item,vars);
+ const format = uiControlFonts.get(node);
  if (isUISetting(item)) {
   const label = node.firstElementChild, control = label.nextElementSibling;
-  if (label.textContent !== content) {
-   label.textContent = content;
-   control.setAttribute('aria-label',content);
-  }
+  paintStudioUICaption(label,content,format);
+  if (control.getAttribute('aria-label') !== content) control.setAttribute('aria-label',content);
   const value = uiSettingValue(item,vars,values);
   if (item.kind === 'toggle') {
    control.setAttribute('aria-pressed',String(Boolean(value)));
    const text = value ? 'On' : 'Off';
-   if (control.textContent !== text) control.textContent = text;
+   paintStudioUICaption(control,text,format);
   } else {
    const number = Number(value);
    const next = item.kind === 'slider' ? String(Math.max(item.min,Math.min(item.max,Number.isFinite(number) ? number : item.min))) :
@@ -158,14 +182,14 @@ function updateUIControl(node, item, vars, values, data) {
  }
  if (item.kind === 'panel') return;
  if (item.kind !== 'bar') {
-  if (node.textContent !== content) node.textContent = content;
+  paintStudioUICaption(node,content,format);
   return;
  }
  const value = Math.max(0,Math.min(item.max,Number(Object.hasOwn(vars,item.variable) ? vars[item.variable] : 0) || 0));
  const level = (100 * value / item.max) + '%';
  if (node.style.getPropertyValue('--void-ui-value') !== level) node.style.setProperty('--void-ui-value',level);
  const label = item.text ? content : value + ' / ' + item.max;
- if (node.firstChild.textContent !== label) node.firstChild.textContent = label;
+ paintStudioUICaption(node.firstChild,label,format);
 }
 
 function createUIControl(item, vars, style, values, data) {
@@ -175,9 +199,12 @@ function createUIControl(item, vars, style, values, data) {
  node.style.fontSize = 'calc(' + (style?.size ?? item.size) + ' * var(--void-ui-unit))';
  node.style.color = style?.color ?? item.color;
  node.style.setProperty('--void-ui-color',item.transparent ? 'transparent' : style?.background ?? item.background);
+ const fontId=item.font || style?.font, font=loadStudioFont(studioFontLibrary(data?.project),fontId);
+ if (font) uiControlFonts.set(node,{font,size:style?.size ?? item.size,color:style?.color ?? item.color});
+ const family=font?.family ?? uiFonts[fontId];
+ if (family) node.style.fontFamily=family;
  if (style) {
   node.classList.add('void-ui-themed');
-  node.style.fontFamily = uiFonts[style.font];
   for (const state of ['hover','pressed','focus','disabled']) node.style.setProperty('--void-ui-' + state,style[state]);
  }
  if (item.kind === 'panel') node.classList.toggle('void-ui-transparent',Boolean(item.transparent));

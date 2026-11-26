@@ -216,6 +216,12 @@
 .artwork-view-tools button { padding:3px 9px; }
 .artwork-view-tools output { font-size:12px; color:var(--sub); padding-inline:3px; }
 #artwork-help { margin:8px 0 0; font-size:12px; }
+.font-asset-row { display:flex; align-items:center; gap:8px; padding-block:5px; border-bottom:1px solid var(--line); }
+.font-asset-row button:first-child { flex:1; text-align:left; }
+.font-asset-row span { font-size:11px; }
+.font-sample { margin-top:12px; }
+#font-sample-preview { min-height:54px; overflow-wrap:anywhere; overflow:auto; padding:10px; background:var(--bg); border-radius:4px; font-size:24px; }
+#font-sample-preview canvas { display:block; max-width:100%; image-rendering:pixelated; }
 .main:has(#eventview.sheet-focused:not([hidden])) { grid-template-columns: var(--project-width) minmax(0,1fr) 0; }
 .main:has(#eventview.sheet-focused:not([hidden])) > .inspector { visibility:hidden; }
 .event-entry { margin-left:calc(var(--depth)*18px); }

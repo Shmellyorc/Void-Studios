@@ -237,11 +237,14 @@ function uiInspectorControl(item,model) {
  const binding = canBind && (dataOptions.length || item.dataField)
   ? select('Data field','ui-item.dataField',item.dataField ?? '',[['','None'],...dataOptionsWithMissing(dataOptions,item.dataField)]) +
    (item.dataField ? select('Row from global','ui-item.dataRowVariable',item.dataRowVariable ?? '',[['','Use the selected field’s row'],...globals.slice(1)]) : '') : '';
+ const typography = panel || image ? '' : select('Font','ui-item.font',item.font??'',
+  [['','Inherit'],['system','System'],['serif','Serif'],['mono','Monospace'],...studioFontOptions()]) +
+  button('Manage Fonts…','font:open');
  return '<div class="prop-group"><h4>' + item.kind.toUpperCase() + '</h4>' + fieldFor(panel ? 'Name' : image ? 'Accessible name' : 'Text','text') + binding +
   select('Parent panel','ui-item.parent',item.parent ?? '',uiParents(item,model)) + style +
   (stacked ? '<p class="muted">Positioned by parent stack.</p>' : select('Anchor','ui-item.anchor',item.anchor,Object.entries(uiAnchorLabels))) +
   '<div class="two">' + fields.map(([label,key]) => fieldFor(label,key,'number')).join('') +
-  (!panel && !image && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
+  typography + (!panel && !image && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
   (!item.style && !image && item.kind !== 'label' ? fieldFor('Fill color','background','color') : '') + '</div>' +
   (isUIInteractive(item) ? fieldFor('Focus order','order','number') + checkFor('Disabled','disabled') : '') +
   (item.kind === 'button' ? select('When activated','ui-item.command',item.command,
@@ -308,7 +311,7 @@ function editUIStyle(id) {
  const original = (P.uiStyles ?? []).find(style => style.id === id), style = clone(original ?? uiStyleDefaults());
  const labels = { color:'Text',background:'Normal',hover:'Hover',pressed:'Pressed',focus:'Focus outline',disabled:'Disabled' };
  simple(original ? 'Edit UI Style' : 'New UI Style',field('Style name','name',style.name) +
-  select('Font','font',style.font,[['system','System'],['serif','Serif'],['mono','Monospace']]) +
+  select('Font','font',style.font,[['system','System'],['serif','Serif'],['mono','Monospace'],...studioFontOptions()]) +
   field('Font size','size',style.size,'number') +
   uiStyleColors.map(key => field(labels[key],key,style[key],'color')).join(''),values => {
    const name = values.name.trim().slice(0,100), size = Number(values.size);

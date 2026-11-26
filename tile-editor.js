@@ -341,7 +341,7 @@ function drawMapEditor() {
  drawTileLayers(ctx, map, atlases, images, map.layers.filter(layer => !layer.above));
  for (const object of tileObjectOrder(layout,expandedLayoutInstances(P,layout))) {
   const type = T(object.type);
-  if (type) drawObjectPose(ctx, type, layoutSpritePose(type, object), images);
+  if (type) drawObjectPose(ctx, type, layoutSpritePose(type, object), images, studioFontLibrary(P));
  }
  drawTileLayers(ctx, map, atlases, images, map.layers.filter(layer => layer.above));
  drawTileEnumIcons(ctx,map,atlases,selectedTileLayer());

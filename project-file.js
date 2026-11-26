@@ -1,8 +1,9 @@
 const projectFileMagic = Uint8Array.of(86,79,73,68,80,82,74); // VOIDPRJ
 const projectFileVersion = 2;
 const projectFileHeaderSize = 12;
-const projectMediaPrefix = /^data:(?:image|audio)\/[a-z0-9.+-]+;base64,/i;
-const projectMediaCollections = [['types','image','image'],['tilesets','image','image'],['audioClips','source','audio'],['spriteLayers','image','image']];
+const projectMediaPrefix = /^data:(?:image|audio|font)\/[a-z0-9.+-]+;base64,/i;
+const projectMediaCollections = [['types','image','image'],['tilesets','image','image'],['audioClips','source','audio'],
+ ['spriteLayers','image','image'],['fonts','source','font'],['fontPages','image','image']];
 
 function projectMediaBase64(bytes) {
  if (bytes.toBase64) return bytes.toBase64();
@@ -88,7 +89,7 @@ function decodeProjectFile(buffer) {
  });
  if (offset !== buffer.byteLength) throw Error('The VOID project contains unexpected data');
  for (const [key,field,kind] of projectMediaCollections) {
-  if (legacy && kind === 'audio') continue;
+  if (legacy && kind !== 'image') continue;
   const links = references[key] ?? [];
   if (!Array.isArray(links)) throw Error('The VOID project has invalid asset references');
   for (const link of links) {

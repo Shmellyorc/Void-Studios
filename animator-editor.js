@@ -220,7 +220,7 @@ function drawAnimationPreview() {
   const pose = clip ? animationPose(clip, animator.position) : {};
   const scale = Math.min(4, (width - 48) / w, (height - 48) / h);
   ctx.save(); ctx.translate(width / 2, height / 2); ctx.scale(scale, scale);
-  drawObjectPose(ctx, type, { x: -w / 2, y: -h / 2, w, h, opacity: 1, pose, animFrame: pose.frame ?? 0 }, images);
+  drawObjectPose(ctx, type, { x: -w / 2, y: -h / 2, w, h, opacity: 1, pose, animFrame: pose.frame ?? 0 }, images, studioFontLibrary(P));
   ctx.restore();
  }
  if (clip) {

@@ -90,7 +90,7 @@ function editPrefab(prefab) {
   ctx.scale(scale,scale);
   draft.members.forEach((member, i) => {
    const type = T(member.type);
-   drawObjectPose(ctx,type,layoutSpritePose(type,member),images);
+   drawObjectPose(ctx,type,layoutSpritePose(type,member),images,studioFontLibrary(P));
    const image = images.get(type.image);
    if (image && !image.complete && !loadingArtwork.has(image)) {
     loadingArtwork.add(image);

@@ -324,6 +324,18 @@ sprite sheet and clip menus. The mouse wheel zooms over the Scene, Tilemap,
 Animator, or UI canvas. Middle-drag pans the Scene, Tilemap, and UI canvases.
 **View → Reset View** restores the default zoom and canvas position.
 
+## Project fonts
+
+Open **Project → Fonts** to import a TTF, OTF, or WOFF font, download a Google
+Fonts family, or select a BMFont `.fnt` descriptor together with its atlas
+images. Select an imported font in a text object, UI control, or shared UI
+style. Saved projects and exports embed their fonts for offline use.
+
+For a flood-fill font, import its image and select a character mapping preset
+or enter the exact character order. The loader scans the image from top to
+bottom and left to right, using four-neighbor connectivity to identify each
+glyph. Pixel `(0,0)` supplies the ignore color. A glyph can be one pixel wide.
+
 ## Audio
 
 Open **Audio** and choose **Import Audio** to add clips such as WAV, MP3, or
