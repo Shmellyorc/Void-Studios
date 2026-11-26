@@ -401,7 +401,7 @@ function createRuntime(project, canvas, hooks={}) {
  const norm=gameKeyName;
  const keyDown=k=>keys.has(norm(k));
  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
- const functions={tileHasTag, tileColumn, tileRow, min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
+ const functions={tileHasTag, tileColumn, tileRow, audioLevel:bus=>audio.volume(bus), min:Math.min,max:Math.max,abs:Math.abs,floor:Math.floor,ceil:Math.ceil,round:Math.round,sqrt:Math.sqrt,sin:Math.sin,cos:Math.cos,random:(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a),clamp,len:x=>Array.isArray(x)?x.length:typeof x==='object'&&x?Object.keys(x).length:String(x).length,at:(x,k)=>x!=null&&Object.hasOwn(x,k)?x[k]:0,str:String,num:Number,lerp:(a,b,t)=>a+(b-a)*t};
  const expressionEnvironment = { read: resolve, functions };
  const expressionCache = new Map();
  function interpretExpression(text, context) {

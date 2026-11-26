@@ -160,6 +160,10 @@ function createGameAudio(assets = [], mix = {}, report = () => {}) {
   setVolume(bus,volume,duration = 0) {
    if (buses.has(bus)) setLevel(buses.get(bus),volume,duration);
   },
+  volume(bus) {
+   const fader = buses.get(bus);
+   return fader ? currentLevel(fader)*100 : 0;
+  },
   tone(frequency,duration) {
    if (!context && navigator.userActivation?.isActive) unlock();
    if (context?.state !== 'running' || closed) return;

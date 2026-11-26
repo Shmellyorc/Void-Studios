@@ -247,8 +247,9 @@ Use **Play audio** in an event sheet to choose a clip, channel, volume, and
 whether it loops. Untagged sounds can overlap. A named tag replaces any
 previous playback with the same tag. **Stop audio** and **Fade audio** target
 that tag. Leaving it empty targets all clips. **Set channel volume** changes
-the mixer from events, and **On screen shown** can trigger an audio transition
-when a pause menu opens or a HUD returns.
+the mixer from events. Expressions such as `audioLevel("music")` read its
+current level. **On screen shown** can trigger an audio transition when a pause
+menu opens or a HUD returns.
 
 **Load Audio Demo** opens Shard Runner with original music and sounds. The
 Options screen has a slider for each channel. Pause fades the music down and

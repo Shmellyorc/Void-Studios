@@ -650,7 +650,8 @@ function menuDemo() {
  project.audioMixer = Object.fromEntries(mixer.map(([bus,,,value]) => [bus,value]));
  project.globals.push(...mixer.map(([,name,,value]) => ({name,value})),{name:'Fullscreen',value:false},{name:'Tone',value:'Low'});
  title.events.push(
-  event([block('start')],[block('stopAudio',{tag:track})]),
+  event([block('start')],[block('stopAudio',{tag:track}),
+   ...mixer.map(([bus,name]) => block('setGlobal',{name,value:'round(audioLevel("' + bus + '"))'}))]),
   ...mixer.map(([bus,value],index) => event([block('uiChanged',{control:sliders[index].id})],
    [block('audioBusVolume',{bus,value,duration:'0'})])),
   event([block('uiChanged',{control:fullscreen.id})],[block('fullscreen',{name:'Fullscreen'})]),
