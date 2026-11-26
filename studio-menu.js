@@ -1,6 +1,6 @@
 const workspaceTabs = [
  ['layout','Scene','layouttab'], ['events','Event Sheet','eventtab'], ['tiles','Tilemap','tiletab'],
- ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'], ['sprite','Sprite','spritetab'],
+ ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'], ['sprite','Sprite','spritetab'], ['data','Data','datatab'],
 ];
 const studioWorkspaceCommands = {
  layout: [
@@ -25,12 +25,14 @@ const studioWorkspaceCommands = {
    ['Play / Pause Clip','anim:play'],['Rewind Clip','anim:rewind']]],
  ],
  ui: [
-  ['UI',[['New Screen…','ui:newScreen'],['Add Panel','ui:add:panel'],['Add Button','ui:add:button'],['Add Label','ui:add:label'],
+  ['UI',[['New Screen…','ui:newScreen'],['Add Panel','ui:add:panel'],['Add Button','ui:add:button'],['Add Label','ui:add:label'],['Add Image','ui:add:image'],
    ['Add Bar','ui:add:bar'],['Add Slider','ui:add:slider'],['Add Toggle','ui:add:toggle'],['Add Dropdown','ui:add:dropdown'],
    null,['Shared Styles…','ui:styles'],['Load Menu Demo…','ui:demo']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
  audio: [['Audio',[['Import Audio…','audio:import'],['Audition / Stop','audio:audition'],null,['Load Audio Demo…','audio:demo']]]],
+ data: [['Data',[['New Data File…','data:newFile'],['Import…','data:import'],['Export…','data:export'],null,
+  ['Tables','data:tables'],['Enums','data:enums'],['Load Bestiary Demo…','data:demo']]]],
  sprite: [
   ['Sprite',[['New Sprite…','sprite:new'],['Open Image…','sprite:import'],['Import Image as Layer…','sprite:importLayer'],null,
    ['Resize Canvas…','sprite:resize'],['Frame Grid…','sprite:gridDialog'],['Link to Object…','sprite:link'],['Export PNG','sprite:export']]],
@@ -63,6 +65,8 @@ const studioMenuAvailability = {
  'ui:add:label': () => Boolean(currentUIScreen()),
  'ui:add:bar': () => Boolean(currentUIScreen()),
  'ui:add:panel': () => Boolean(currentUIScreen()),
+ 'ui:add:image': () => Boolean(currentUIScreen()),
+ 'data:export': () => Boolean(dataFile()),
  'ui:add:slider': () => Boolean(currentUIScreen()),
  'ui:add:toggle': () => Boolean(currentUIScreen()),
  'ui:add:dropdown': () => Boolean(currentUIScreen()),

@@ -20,7 +20,7 @@ const uiEdgeLabels = {
 const uiResizeHandles = { nw:[-1,-1], n:[0,-1], ne:[1,-1], e:[1,0], se:[1,1], s:[0,1], sw:[-1,1], w:[-1,0] };
 const uiViewportPresets = [['layout','Layout'],['narrow','Narrow (4:3)',4/3],['wide','Widescreen (16:9)',16/9],
  ['ultrawide','Ultrawide (21:9)',21/9],['portrait','Portrait (9:16)',9/16]];
-const uiControlKinds = [['button','Button'],['label','Label'],['bar','Bar'],['slider','Slider'],['toggle','Toggle'],['dropdown','Dropdown']];
+const uiControlKinds = [['button','Button'],['label','Label'],['image','Image'],['bar','Bar'],['slider','Slider'],['toggle','Toggle'],['dropdown','Dropdown']];
 const uiLayoutModes = [['free','Free placement'],['column','Vertical stack'],['row','Horizontal stack']];
 const uiCrossOptions = [['start','Start'],['center','Center'],['end','End'],['stretch','Stretch']];
 
@@ -104,6 +104,7 @@ function uiControlPreset(kind, text, props = {}) {
   color: '#e8f2f6', background: '#24465a',
   ...(kind === 'button' ? { order: 0, command: 'event', target: '' } : {}),
   ...(kind === 'bar' ? { variable: '', max: 100, background: '#3cb58f' } : {}),
+  ...(kind === 'image' ? { w:96,h:96 } : {}),
   ...(kind === 'panel' ? { w:320,h:180,layout:'column',padding:12,gap:8,align:'stretch',fit:true,background:'#213548' } : {}),
   ...(uiSettingsKinds.includes(kind) ? { w:260,variable:'',order:0 } : {}),
   ...(kind === 'slider' ? { min:0,max:100,step:5 } : {}),
@@ -127,10 +128,11 @@ function paintUIWorkspace(viewport, model) {
  const screen = currentUIScreen();
  stage.classList.toggle('void-ui-paused',Boolean(screen?.pause));
  const vars = Object.fromEntries(P.globals.map(variable => [variable.name,variable.value]));
+ const data = createStudioData(P);
  const styles = new Map((P.uiStyles ?? []).map(style => [style.id,style]));
  const visible = model.ordered.filter(entry => !entry.hidden);
  stage.replaceChildren(...visible.map(({ item,box,locked }) => {
-  const node = createUIControl(item,vars,styles.get(item.style));
+  const node = createUIControl(item,vars,styles.get(item.style),undefined,data);
   node.tabIndex = -1;
   if (item.kind === 'button') node.disabled = false;
   for (const control of node.querySelectorAll('input,select,button')) control.tabIndex = -1;
@@ -194,7 +196,7 @@ function renderUIWorkspace() {
  $('#ui-hierarchy').innerHTML = uiHierarchyMarkup(model,entries);
  $('#ui-tools').innerHTML = button('+ Screen','ui:newScreen','primary') + (screen ?
   button('+ Panel','ui:add:panel') + button('+ Button','ui:add:button') + button('+ Label','ui:add:label') +
-  button('+ Bar','ui:add:bar') + select('Add setting','ui-add-setting','',[['','Choose…'],...uiControlKinds.filter(([id]) => uiSettingsKinds.includes(id))]) +
+  button('+ Bar','ui:add:bar') + button('+ Image','ui:add:image') + select('Add setting','ui-add-setting','',[['','Choose…'],...uiControlKinds.filter(([id]) => uiSettingsKinds.includes(id))]) +
   uiAlignmentMenu(entries) : '') +
   '<div class="spacer"></div>' + select('Viewport','ui-viewport',uiWorkspace.viewport,uiViewportPresets) +
   button('Styles','ui:styles') + button('Input Actions','ui:inputs') + button('Load Menu Demo','ui:demo');
@@ -228,13 +230,19 @@ function uiInspectorControl(item,model) {
  const panel = item.kind === 'panel';
  const fields = [...(stacked ? [] : [['Offset X','x'],['Offset Y','y']]),['Width','w'],['Height','h']];
  const globals = [['','Choose a global variable'],...P.globals.map(variable => [variable.name,variable.name])];
- const style = !panel ? select('Shared style','ui-item.style',item.style ?? '',[['','Custom'],...(P.uiStyles ?? []).map(style => [style.id,style.name])]) : '';
- return '<div class="prop-group"><h4>' + item.kind.toUpperCase() + '</h4>' + fieldFor(panel ? 'Name' : 'Text','text') +
+ const image = item.kind === 'image';
+ const style = !panel && !image ? select('Shared style','ui-item.style',item.style ?? '',[['','Custom'],...(P.uiStyles ?? []).map(style => [style.id,style.name])]) : '';
+ const canBind = image || item.kind === 'label';
+ const dataOptions = canBind ? dataFieldOptions(image) : [];
+ const binding = canBind && (dataOptions.length || item.dataField)
+  ? select('Data field','ui-item.dataField',item.dataField ?? '',[['','None'],...dataOptionsWithMissing(dataOptions,item.dataField)]) +
+   (item.dataField ? select('Row from global','ui-item.dataRowVariable',item.dataRowVariable ?? '',[['','Use the selected field’s row'],...globals.slice(1)]) : '') : '';
+ return '<div class="prop-group"><h4>' + item.kind.toUpperCase() + '</h4>' + fieldFor(panel ? 'Name' : image ? 'Accessible name' : 'Text','text') + binding +
   select('Parent panel','ui-item.parent',item.parent ?? '',uiParents(item,model)) + style +
   (stacked ? '<p class="muted">Positioned by parent stack.</p>' : select('Anchor','ui-item.anchor',item.anchor,Object.entries(uiAnchorLabels))) +
   '<div class="two">' + fields.map(([label,key]) => fieldFor(label,key,'number')).join('') +
-  (!panel && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
-  (!item.style && item.kind !== 'label' ? fieldFor('Fill color','background','color') : '') + '</div>' +
+  (!panel && !image && !item.style ? fieldFor('Font size','size','number') + fieldFor('Text color','color','color') : '') +
+  (!item.style && !image && item.kind !== 'label' ? fieldFor('Fill color','background','color') : '') + '</div>' +
   (isUIInteractive(item) ? fieldFor('Focus order','order','number') + checkFor('Disabled','disabled') : '') +
   (item.kind === 'button' ? select('When activated','ui-item.command',item.command,
    [['event','Trigger visual event'],['layout','Go to layout'],['restart','Restart layout'],['show','Show UI screen'],['restore','Restore layout UI']]) + target :

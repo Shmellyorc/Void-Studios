@@ -1,7 +1,7 @@
 const projectBranches = {
  scenes: ['Scenes','▧'], screens: ['UI Screens','▤'], sheets: ['Event Sheets','⌘'],
  objects: ['Objects','◇'], prefabs: ['Prefabs','◈'], assets: ['Assets','▣'],
- globals: ['Global Variables','𝑥'],
+ globals: ['Global Variables','𝑥'], data: ['Data','▦'],
 };
 
 const projectPanel = {
@@ -28,6 +28,8 @@ function projectItems(project) {
  add('tileset','assets',project.tilesets);
  add('audio','assets',project.audioClips);
  add('global','globals',project.globals);
+ add('data-file','data',project.dataFiles);
+ add('data-enum','data',project.enums);
  return items;
 }
 
@@ -89,6 +91,7 @@ function currentProjectItemKey() {
  if (tab === 'tiles') return 'tileset:' + tileWorkspace.atlas;
  if (tab === 'sprite') return 'sprite:' + currentSprite()?.id;
  if (tab === 'audio') return 'audio:' + selectedAudioClip()?.id;
+ if (tab === 'data') return dataWorkspace.view === 'enums' ? 'data-enum:' + dataWorkspace.enum : 'data-file:' + dataWorkspace.file;
 }
 
 function projectTreeSelection() {
@@ -103,7 +106,9 @@ function projectTreeSelection() {
 
 function renderProjectPanel() {
  if (projectPanel.project !== P) {
-  Object.assign(projectPanel,{ project:P, selected:null, expanded:new Set(['scenes','objects']), dragged:null });
+  const expanded = new Set(['scenes','objects']);
+  if (tab === 'data') expanded.add('data');
+  Object.assign(projectPanel,{ project:P, selected:null, expanded, dragged:null });
  }
  const root = $('#project-tree'), folders = projectFolderMap(), children = new Map();
  const items = projectItems(P);
@@ -120,7 +125,7 @@ function renderProjectPanel() {
  if (projectPanel.selected && !projectPanel.items.has(projectPanel.selected) &&
      !folders.has(projectPanel.selected) && !Object.hasOwn(projectBranches,projectPanel.selected)) projectPanel.selected = null;
  const icons = { scene:'▧', screen:'▤', 'layout-sheet':'⌘', shared:'⌘', behavior:'⌘', object:'◇',
-  prefab:'◈', sprite:'▣', image:'▣', tileset:'▦', audio:'♫', global:'𝑥' };
+  prefab:'◈', sprite:'▣', image:'▣', tileset:'▦', audio:'♫', global:'𝑥', 'data-file':'▦', 'data-enum':'≡' };
  let html = '';
  const stack = Object.entries(projectBranches).map(([key,[name,icon]]) => ({ key,name,icon,directory:true,depth:0 })).reverse();
  while (stack.length) {
@@ -201,6 +206,8 @@ function openProjectItem(item) {
    tab = 'audio';
    break;
   case 'global': return editProjectGlobal(data);
+  case 'data-file': return dataAction('open',data.id);
+  case 'data-enum': return dataAction('enums',data.id);
  }
  render();
 }
@@ -410,6 +417,7 @@ function setupProjectPanel() {
   const actions = {
    scene:'addLayout', screen:'ui:newScreen', sheet:'evt:newSheet', object:'addType', prefab:'prefab:create',
    global:'addGlobal', sprite:'sprite:new', image:'sprite:import', tileset:'tile:import', audio:'audio:import',
+   data:'data:newFile', enum:'data:newEnum',
   };
   if (Object.hasOwn(actions,command)) act(actions[command]);
  });

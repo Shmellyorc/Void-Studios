@@ -99,6 +99,10 @@
  .tabs button { padding-inline: 8px; }
  .tabs span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+@media (max-width: 1000px) {
+ .tabs { flex:none; overflow-x:auto; scrollbar-width:thin; }
+ .tabs button { flex:none; white-space:nowrap; }
+}
 
 #export-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
 .export-icon-row { display: flex; gap: 10px; align-items: end; margin-bottom: 8px; }
@@ -158,6 +162,31 @@
 .project-chevron,.project-icon { display:grid; place-items:center; flex:none; width:11px; color:var(--sub); }
 .project-icon { width:15px; color:#8cb7c8; }
 .project-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#data-tools { flex-wrap:wrap; }
+#data-content { min-height:0; flex:1; overflow:auto; padding:12px; }
+.data-section-tools { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+.data-section-tools label,#data-tools label { margin:0; display:flex; align-items:center; gap:5px; }
+.data-section-tools select,#data-tools select { width:auto; max-width:220px; margin:0; }
+.data-grid-scroll { overflow:auto; max-width:100%; border:1px solid var(--line); border-radius:6px; }
+.data-grid { border-spacing:0; width:100%; text-align:left; }
+.data-grid th,.data-grid td { padding:6px 7px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); }
+.data-grid th { background:#222e3a; white-space:nowrap; }
+.data-grid td { background:#19232e; }
+.data-grid tr:nth-child(even) td { background:#1c2833; }
+.data-grid tr:last-child td,.data-grid th:last-child,.data-grid td:last-child { border:0; }
+.data-grid th small { display:block; font-weight:400; color:var(--sub); padding:4px 3px 1px; }
+.data-grid th button { border:0; background:transparent; padding:3px; }
+.data-grid th button:hover { background:#334658; }
+.data-grid td label { display:block; margin:0; font-size:0; }
+.data-grid td :is(input,select) { font-size:13px; margin:0; min-width:100px; }
+.data-grid td input[type=checkbox] { min-width:0; width:auto; }
+.data-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.data-enum-list { display:grid; gap:5px; max-width:680px; }
+.data-enum-row { display:flex; align-items:center; gap:7px; border:1px solid var(--line); border-radius:5px; background:#202c38; padding:5px; }
+.data-enum-row label { font-size:0; margin:0; flex:1; }
+.data-enum-row label input { font-size:13px; margin:0; }
+.data-enum-grip { padding:4px; cursor:grab; color:var(--sub); }
+.data-enum-icon { container-type:size; display:grid; place-items:center; min-width:36px; width:36px; height:32px; padding:3px; }
 .main:has(#eventview.sheet-focused:not([hidden])) { grid-template-columns: var(--project-width) minmax(0,1fr) 0; }
 .main:has(#eventview.sheet-focused:not([hidden])) > .inspector { visibility:hidden; }
 .event-entry { margin-left:calc(var(--depth)*18px); }

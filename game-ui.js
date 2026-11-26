@@ -58,7 +58,7 @@ function validateGameUI(project) {
       (screen.navigation !== undefined && typeof screen.navigation !== 'boolean')) throw Error('Invalid UI screen');
   screenIds.add(screen.id);
   for (const item of screen.items) {
-   if (!idOK(item?.id) || itemIds.has(item.id) || !['button','label','bar','panel',...uiSettingsKinds].includes(item.kind) ||
+   if (!idOK(item?.id) || itemIds.has(item.id) || !['button','label','bar','panel','image',...uiSettingsKinds].includes(item.kind) ||
     !Object.hasOwn(uiAnchors,item.anchor) || ![item.x,item.y,item.w,item.h,item.size].every(Number.isFinite) ||
     Math.min(item.w,item.h,item.size) <= 0 || typeof item.text !== 'string' ||
     !colorOK(item.color) || !colorOK(item.background) ||
@@ -124,8 +124,18 @@ function uiSettingValue(item, vars, values) {
   values?.get(item.id) ?? (item.kind === 'slider' ? item.min : item.kind === 'dropdown' ? item.options[0] : false);
 }
 
-function updateUIControl(node, item, vars, values) {
- const content = uiControlContent(item,vars);
+function updateUIControl(node, item, vars, values, data) {
+ const field = studioDataBoundValue(data,item.dataField,vars[item.dataRowVariable]);
+ if (item.kind === 'image') {
+  const sprite = data?.enumIcons.get(field) ?? field ?? '';
+  if (node.dataset.dataSprite !== sprite) {
+   const art = studioDataPortrait(data?.project,sprite);
+   node.replaceChildren(...(art ? [art] : []));
+   node.dataset.dataSprite = sprite;
+  }
+  return;
+ }
+ const content = field !== undefined ? String(field) : uiControlContent(item,vars);
  if (isUISetting(item)) {
   const label = node.firstElementChild, control = label.nextElementSibling;
   if (label.textContent !== content) {
@@ -158,7 +168,7 @@ function updateUIControl(node, item, vars, values) {
  if (node.firstChild.textContent !== label) node.firstChild.textContent = label;
 }
 
-function createUIControl(item, vars, style, values) {
+function createUIControl(item, vars, style, values, data) {
  const node = document.createElement(item.kind === 'button' ? 'button' : 'div');
  node.className = 'void-ui-control void-ui-' + item.kind;
  node.dataset.uiControl = item.id;
@@ -173,6 +183,10 @@ function createUIControl(item, vars, style, values) {
  if (item.kind === 'panel') node.classList.toggle('void-ui-transparent',Boolean(item.transparent));
  if (item.kind === 'button') node.type = 'button';
  if (item.kind === 'bar') node.append(document.createElement('span'));
+ if (item.kind === 'image' && item.text) {
+  node.setAttribute('role','img');
+  node.setAttribute('aria-label',item.text);
+ }
  if (isUISetting(item)) {
   node.classList.add('void-ui-setting');
   const label = document.createElement('span');
@@ -191,11 +205,11 @@ function createUIControl(item, vars, style, values) {
   control.disabled = Boolean(item.disabled);
   node.classList.toggle('void-ui-disabled',Boolean(item.disabled));
  }
- updateUIControl(node,item,vars,values);
+ updateUIControl(node,item,vars,values,data);
  return node;
 }
 
-function createGameOverlay(layer, canvas, activate, styles = []) {
+function createGameOverlay(layer, canvas, activate, styles = [], data) {
  if (!layer) return null;
  const styleMap = new Map(styles.map(style => [style.id,style]));
  const values = new Map();
@@ -248,7 +262,7 @@ function createGameOverlay(layer, canvas, activate, styles = []) {
    const restoreFocus = layer.contains(document.activeElement);
    const { ordered } = arrangeUI(screen?.items ?? [],canvas);
    controls = ordered.map(({item,box}) => {
-    const node = createUIControl(item,vars,styleMap.get(item.style),values);
+    const node = createUIControl(item,vars,styleMap.get(item.style),values,data);
     positionUIBounds(node,box);
     return { item,node,control:item.kind === 'button' ? node : node.children[1] };
    });
@@ -273,7 +287,7 @@ function createGameOverlay(layer, canvas, activate, styles = []) {
    else if (restoreFocus) canvas.focus({ preventScroll: true });
    resize();
   },
-  update(vars) { for (const {item,node} of controls) updateUIControl(node,item,vars,values); },
+  update(vars) { for (const {item,node} of controls) updateUIControl(node,item,vars,values,data); },
   navigate(input) {
    const horizontal = Number(input.pressed('menu-right'))-Number(input.pressed('menu-left'));
    if (input.pressed('menu-up')) focus(selected-1,true);

@@ -21,7 +21,7 @@
 </style><style id="game-ui-style">/*GAME_UI_CSS*/</style></head><body><div class="app"><header><div class="brand"><div class="mark">V</div><div class="brandname">VOID STUDIO<small>VISUAL GAME STUDIO</small></div></div><div class="project" id="projectname"></div></header>
 <nav id="studio-menu" class="studio-menu" aria-label="Editor commands">
  <div id="studio-menu-groups" role="menubar" aria-label="VOID Studio"></div>
- <span class="studio-menu-version">v0.17.0</span>
+ <span class="studio-menu-version">v0.18.0</span>
 </nav>
 <main class="main"><aside class="sidebar">
 <section id="project-sidebar" aria-labelledby="project-heading">
@@ -39,6 +39,8 @@
     <button type="button" data-project-command="image">Open Image…</button>
     <button type="button" data-project-command="tileset">Import Tileset…</button>
     <button type="button" data-project-command="audio">Import Audio…</button>
+    <button type="button" data-project-command="data">New Data File…</button>
+    <button type="button" data-project-command="enum">New Enum…</button>
     <hr id="project-item-commands" hidden>
     <button type="button" data-project-command="move" hidden>Move to Folder…</button>
     <button type="button" data-project-command="rename" hidden>Rename Folder…</button>
@@ -53,7 +55,7 @@
  <void-sprite-panel id="sprite-panel-palette"><void-sprite-palette id="sprite-palette"></void-sprite-palette></void-sprite-panel>
  <void-sprite-panel id="sprite-panel-slices"><div id="sprite-slices"></div></void-sprite-panel>
 </section>
-</aside><section class="workspace"><div class="tabs"><button id="layouttab" data-act="layouttab">▧ Scene</button><button id="eventtab" data-act="eventtab">⌘ Event sheet</button><button id="tiletab" data-act="tiletab">Tilemap</button><button id="animtab" data-act="animtab">Animator</button><button id="uitab" data-act="uitab">UI</button><button id="audiotab" data-act="audiotab">Audio</button><button id="spritetab" data-act="spritetab">Sprite</button><span id="layoutlabel"></span></div><div class="view" id="layoutview"><div class="subbar"><button data-act="place">+ Place instance</button><button id="create-prefab" data-act="prefab:create">Create prefab</button><span id="count" class="muted"></span><label><input type="checkbox" id="stamp"> Stamp tiles</label><div class="spacer"></div><label>Grid<select id="snap"><option value="0">Off</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option></select></label><label>Zoom<select id="zoom"><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option></select></label></div><div class="board"><canvas id="stage"></canvas></div><div class="hint">Shift-click to select several instances for a prefab. Ctrl+Z undo · Ctrl+S save · F5 preview.</div></div><div class="view" id="eventview" hidden>
+</aside><section class="workspace"><div class="tabs"><button id="layouttab" data-act="layouttab">▧ Scene</button><button id="eventtab" data-act="eventtab">⌘ Event sheet</button><button id="tiletab" data-act="tiletab">Tilemap</button><button id="animtab" data-act="animtab">Animator</button><button id="uitab" data-act="uitab">UI</button><button id="audiotab" data-act="audiotab">Audio</button><button id="spritetab" data-act="spritetab">Sprite</button><button id="datatab" data-act="datatab">Data</button><span id="layoutlabel"></span></div><div class="view" id="layoutview"><div class="subbar"><button data-act="place">+ Place instance</button><button id="create-prefab" data-act="prefab:create">Create prefab</button><span id="count" class="muted"></span><label><input type="checkbox" id="stamp"> Stamp tiles</label><div class="spacer"></div><label>Grid<select id="snap"><option value="0">Off</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option></select></label><label>Zoom<select id="zoom"><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option></select></label></div><div class="board"><canvas id="stage"></canvas></div><div class="hint">Shift-click to select several instances for a prefab. Ctrl+Z undo · Ctrl+S save · F5 preview.</div></div><div class="view" id="eventview" hidden>
  <div class="subbar event-sheet-toolbar">
   <div id="event-sheet-choice"></div><button data-act="evt:newSheet">New Sheet…</button><div id="event-sheet-settings"></div>
   <div class="spacer"></div><div id="event-layout-assignment"></div>
@@ -100,7 +102,12 @@
  <div class="subbar asset-toolbar" id="sprite-frames"></div>
  <void-sprite-timeline id="sprite-timeline" hidden></void-sprite-timeline>
  <div class="hint" id="sprite-status"></div>
+</div>
+<div class="view" id="dataview" hidden>
+ <div class="subbar asset-toolbar" id="data-tools"></div>
+ <div id="data-content"></div>
 </div></section><aside class="inspector"><section id="project-inspector"><div class="panelhead">PROPERTIES</div><div id="properties"></div></section>
+<section id="data-inspector" hidden></section>
 <section id="tile-inspector" hidden></section><section id="animation-inspector" hidden></section><section id="ui-inspector" hidden></section><section id="audio-inspector" hidden></section><section id="sprite-inspector" hidden>
  <void-sprite-panel id="sprite-panel-tools"><div id="sprite-tools"></div><div id="sprite-tool-options"></div></void-sprite-panel>
  <void-sprite-panel id="sprite-panel-layers"><void-sprite-layers id="sprite-layers"></void-sprite-layers></void-sprite-panel>
@@ -141,6 +148,7 @@
   </aside>
  </div>
 </dialog>
+<input type="file" id="data-file-input" accept=".voiddata,application/json" hidden>
 <dialog id="studio-settings" aria-labelledby="settings-heading">
  <div class="modalhead" id="settings-heading">Settings</div>
  <div class="modalbody">
@@ -188,4 +196,4 @@
    <button id="export-build" class="primary" type="submit">Download HTML</button>
   </div>
  </form>
-</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*ANIMATION_MACHINE_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*PROJECT_PANEL*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EVENT_WORKSPACE*/</script><script>/*EVENT_PICKER_MODEL*/</script><script>/*EDITOR*/</script></body></html>
+</dialog><script id="runtime-licenses" type="text/plain">/*LICENSES*/</script><script id="pixi-source" type="application/octet-stream">/*PIXI*/</script><script id="effects-source">/*SCENE_EFFECTS*/</script><script id="behavior-source">/*BEHAVIORS*/</script><script id="tilemap-source">/*TILEMAP*/</script><script id="navigation-source">/*NAVIGATION*/</script><script id="animation-source">/*ANIMATION*/</script><script id="expression-source">/*EVENT_EXPRESSIONS*/</script><script id="component-source">/*COMPONENTS*/</script><script id="ui-layout-source">/*UI_LAYOUT*/</script><script id="studio-data-source">/*STUDIO_DATA*/</script><script id="game-ui-source">/*GAME_UI*/</script><script id="audio-source">/*AUDIO*/</script><script id="runtime-source">/*RUNTIME*/</script><script>/*TILE_EDITOR*/</script><script>/*ANIMATOR_EDITOR*/</script><script>/*ANIMATION_MACHINE_EDITOR*/</script><script>/*STUDIO_DEBUGGER*/</script><script>/*EVENT_COMPILER*/</script><script>/*COMPONENT_EDITOR*/</script><script>/*PROJECT_FILE*/</script><script>/*PROJECT_PANEL*/</script><script>/*DATA_EDITOR*/</script><script>/*GAME_EXPORT*/</script><script>/*UI_EDITOR*/</script><script>/*AUDIO_EDITOR*/</script><script>/*SPRITE_PIXELS*/</script><script>/*SPRITE_CONTROLS*/</script><script>/*SPRITE_WORKSPACE*/</script><script>/*SPRITE_TIMELINE*/</script><script>/*SPRITE_EDITOR*/</script><script>/*WORKSPACE_ZOOM*/</script><script>/*STUDIO_MENU*/</script><script>/*EVENT_WORKSPACE*/</script><script>/*EVENT_PICKER_MODEL*/</script><script>/*EDITOR*/</script></body></html>

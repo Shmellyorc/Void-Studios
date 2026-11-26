@@ -8,6 +8,8 @@ const eventCommandDescriptions={
  start:'Run when the current layout starts.',tick:'Run once each simulation tick.',every:'Run at the interval you specify.',
  triggerOnce:'Run once while the other conditions stay true for the same selection.',
  groupActive:'Check whether this event group is enabled.',setGroupActive:'Enable or disable an event group during play.',
+ setDataRow:'Store a selected table row in a global variable, for use in expressions and UI bindings.',
+ setGlobalFromData:'Copy a typed value from a table cell into a global variable.',
  compare:'Run when the expression evaluates to true.',filter:'Keep only the instances that match your expression.',
  aimAt:'Rotate the selected instance toward a point in the layout.',spawn:'Create an object using coordinates relative to the selected instance.',
  position:'Move the selected instance to a position in the layout.',collision:'Run when two instances begin overlapping.',
@@ -57,6 +59,7 @@ function fixedEventParameter(kind,key,schema,type) {
   '@object':()=>P.types.map(item=>[item.id,item.name]),
   '@layout':()=>P.layouts.map(item=>[item.id,item.name]),
   '@global':()=>P.globals.map(item=>[item.name,item.name]),
+  '@dataRow':dataRowOptions,'@dataField':()=>dataFieldOptions(null),
   '@tileTag':projectTagOptions,
   '@input':uiInputOptions,'@uiButton':uiControlOptions,'@uiSetting':uiSettingOptions,'@uiScreen':uiScreenOptions,
   '@audioClip':audioClipOptions,'@audioBus':()=>[['','Clip default'],...Object.entries(audioBuses)],
@@ -81,14 +84,17 @@ function fixedEventParameter(kind,key,schema,type) {
  return null;
 }
 
-function eventExpressionSuggestions(type) {
- const names=['dt','time','index','count','pi','true','false','Mouse','Camera','Self','global','Enums',
+function eventExpressionSuggestions(type,dataMembers,rows) {
+ const names=['dt','time','index','count','pi','true','false','Mouse','Camera','Self','global','Enums','Data',
   ...P.types.map(item=>item.name),...P.globals.map(item=>item.name)];
  const properties=['x','y','w','h','width','height','angle','opacity','vx','vy','visible','ground','text'];
  const members={Mouse:['X','Y','screenX','screenY','down','clicked'],Camera:['left','top','width','height','zoom','shakeX','shakeY'],
-  Self:[...properties,...Object.keys(type?.vars??{})],global:P.globals.map(item=>item.name),Enums:(P.enums??[]).map(item=>item.name)};
+  Self:[...properties,...Object.keys(type?.vars??{}),...Object.keys(rows.get(type?.dataRow)??{})],
+  global:P.globals.map(item=>item.name),Enums:(P.enums??[]).map(item=>item.name),...dataMembers};
  for (const item of P.enums??[]) members['Enums.'+item.name]=item.values.map(value=>value.name);
- for (const item of P.types) if (!Object.hasOwn(members,item.name)) members[item.name]=[...properties,...Object.keys(item.vars??{})];
+ for (const item of P.types) if (!Object.hasOwn(members,item.name)) {
+  members[item.name]=[...properties,...Object.keys(item.vars??{}),...Object.keys(rows.get(item.dataRow)??{})];
+ }
  const behavior=currentSheet();
  if (behavior) {
   names.push('Settings','Target');
@@ -102,6 +108,7 @@ function eventPickerModel(which,old) {
  const condition=which==='C', kind=condition?'condition':'action';
  const catalog=studioBlockCatalog(kind,!!currentSheet(),P);
  const definitions=Object.entries(catalog);
+ const dataMembers=dataExpressionMembers(P), {rows}=createStudioData(P);
  const specials=[...new Set(definitions.map(([id,entry])=>eventOwnerFor(id,entry)).filter(Boolean))];
  const targets=[...specials.map(key=>({key,name:key,icon:eventOwnerIcons[key]??'◇',color:'#83c6e3'})),
   ...(currentSheet()?[{key:SELF_TARGET,name:'Self',icon:'◉',color:'#8ed7bb'}]:[]),
@@ -121,7 +128,7 @@ function eventPickerModel(which,old) {
    return [{id,owner,label:definition[1],category:definition[0],icon:eventCommandIcon(id,condition),
     description:eventCommandDescriptions[id]??'',fields}];
   });
-  target.expressions=eventExpressionSuggestions(target.type);
+ target.expressions=eventExpressionSuggestions(target.type,dataMembers,rows);
  }
  return {label:condition?'condition':'action',editing:Boolean(old),targets:targets.filter(target=>target.commands.length),
   selectedTarget:old && Object.hasOwn(catalog,old.kind)?eventOwnerFor(old.kind,catalog[old.kind],old.args):'',

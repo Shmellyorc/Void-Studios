@@ -1,6 +1,6 @@
 const tileWorkspace = {
  layout: null, layer: null, atlas: null, column: 0, row: 0, tool: 'paint',
- flipX: false, flipY: false, grid: true, zoom: 1, hover: null, stroke: null, tagFilter: '',
+ flipX: false, flipY: false, grid: true, enumIcons: true, zoom: 1, hover: null, stroke: null, tagFilter: '',
 };
 const tileTools = [
  ['paint', 'Paint', 'B'], ['erase', 'Erase', 'E'], ['line', 'Line', 'L'],
@@ -29,7 +29,8 @@ function validateAssetProject(project) {
  }
  for (const enumType of project.enums) {
   if (!enumType || typeof enumType.id !== 'string' || !validSettingName(enumType.name) || !Array.isArray(enumType.values) ||
-   enumType.values.some(value => !value || typeof value.id !== 'string' || !validSettingName(value.name))) throw Error('Invalid project enum');
+   enumType.values.some(value => !value || typeof value.id !== 'string' || !validSettingName(value.name) ||
+    value.icon !== undefined && typeof value.icon !== 'string')) throw Error('Invalid project enum');
  }
  for (const layout of project.layouts) {
   if (layout.camera && !validSceneCamera(layout.camera)) throw Error('Invalid camera settings');
@@ -169,33 +170,6 @@ function sampleTileset() {
  });
 }
 
-function configureEnum(existing) {
- simple(existing ? 'Edit Project Enum' : 'New Project Enum', field('Name','name',existing?.name ?? 'Surface') +
-  field('Values (comma separated)', 'values', existing?.values.map(value => value.name).join(', ') ?? 'Grass, Water, Stone'), values => {
-   const name = values.name.trim();
-   const members = values.values.split(',').map(value => value.trim()).filter(Boolean);
-   if (!validSettingName(name) || P.enums.some(item => item.id !== existing?.id && item.name === name) ||
-    !members.length || new Set(members).size !== members.length || !members.every(validSettingName)) {
-    throw Error('Use a unique enum name and unique identifiers for its values');
-   }
-   const next = { id: existing?.id ?? uid(), name, values: members.map(member =>
-    existing?.values.find(value => value.name === member) ?? { id: uid(), name: member }) };
-   change(() => {
-    if (!existing) { P.enums.push(next); return; }
-    const removed = new Set(existing.values.filter(value => !members.includes(value.name)).map(value => tileEnumToken(existing, value)));
-    for (const atlas of P.tilesets) for (const metadata of Object.values(atlas.tiles)) {
-     metadata.tags = metadata.tags.filter(tag => !removed.has(tag));
-     if (removed.has(metadata.terrain)) { delete metadata.terrain; delete metadata.edges; }
-    }
-    for (const layout of P.layouts) for (const layer of layout.tilemap?.layers ?? []) {
-     for (const cell of Object.values(layer.cells)) if (removed.has(cell.terrain)) delete cell.terrain;
-    }
-    if (removed.has(tileWorkspace.tagFilter)) tileWorkspace.tagFilter = '';
-    Object.assign(existing, next);
-   });
-  });
-}
-
 function projectTagOptions() {
  return P.enums.flatMap(enumType => enumType.values.map(value => [tileEnumToken(enumType, value), `${enumType.name}.${value.name}`]));
 }
@@ -251,7 +225,7 @@ function tilePaletteHtml(atlas) {
    ${tags.map(([token, name]) => checkbox(name, 'tile-tag.' + token, metadata?.tags?.includes(token))).join('')}
    ${tags.length ? button('Terrain Variant','tile:terrain') : ''}${metadata?.terrain ? `<p class="muted">${esc(tags.find(([token]) => token === metadata.terrain)?.[1])} · ${terrainEdges.filter((_, index) => metadata.edges & (1 << index)).map(([, , name]) => name).join(', ') || 'Isolated'}</p>` : ''}` : ''}
   <div class="sectionline"></div><h4>PROJECT ENUMS</h4>
-  ${P.enums.map(item => button(item.name, 'tile:editEnum:' + item.id)).join(' ')} ${button('+ New enum','tile:newEnum')}
+  ${P.enums.map(item => button(esc(item.name), 'data:enums:' + item.id)).join(' ')} ${button('Manage Enums','data:enums')}
  </div>`;
 }
 
@@ -273,7 +247,7 @@ function renderTileEditor() {
  $('#tile-inspector').innerHTML = tilePaletteHtml(atlas);
  const names = map ? tileTools.map(([id, name, key]) => `<button class="${tileWorkspace.tool === id ? 'active' : ''}" data-act="tile:tool:${id}" title="${name} (${key})" aria-pressed="${tileWorkspace.tool === id}">${name}</button>`).join('') : '';
  $('#tile-tools').innerHTML = button(map ? 'Map Settings' : 'Create Tilemap','tile:settings',map ? '' : 'primary') + names + (map ?
-  `<span class="spacer"></span>${checkbox('Grid','tile-grid',tileWorkspace.grid)}${checkbox('Flip X','tile-flipX',tileWorkspace.flipX)}${checkbox('Flip Y','tile-flipY',tileWorkspace.flipY)}
+  `<span class="spacer"></span>${checkbox('Grid','tile-grid',tileWorkspace.grid)}${checkbox('Enum icons','tile-enumIcons',tileWorkspace.enumIcons)}${checkbox('Flip X','tile-flipX',tileWorkspace.flipX)}${checkbox('Flip Y','tile-flipY',tileWorkspace.flipY)}
    ${select('Zoom','tile-zoom',String(tileWorkspace.zoom),workspaceZoomLevels.map(value => [String(value),value * 100 + '%']))}` : '');
  $('#tile-empty').hidden = Boolean(map);
  $('#tile-board').hidden = !map;
@@ -318,6 +292,37 @@ function traceTileCell(ctx, map, column, row) {
  ctx.moveTo(x, y - h); ctx.lineTo(x + w, y); ctx.lineTo(x, y + h); ctx.lineTo(x - w, y); ctx.closePath();
 }
 
+function drawTileEnumIcons(ctx,map,atlases,layer) {
+ if (!tileWorkspace.enumIcons || !layer?.visible) return;
+ const artwork = new Map();
+ for (const type of P.enums) for (const member of type.values) {
+  if (member.icon) artwork.set(tileEnumToken(type,member),studioDataSprite(P,member.icon));
+ }
+ if (!artwork.size) return;
+ const size = Math.min(map.cellWidth,map.cellHeight)*.64;
+ ctx.save();
+ ctx.imageSmoothingEnabled = false;
+ for (const [key,tile] of Object.entries(layer.cells)) {
+  const meta = tileMeta(atlases.get(tile.atlas) ?? {},tile.column,tile.row);
+  const icon = [tile.terrain,meta?.terrain,...(meta?.tags ?? [])].map(tag=>artwork.get(tag)).find(Boolean);
+  if (!icon) continue;
+  const [x,y] = tileCellCenter(map,...key.split(',').map(Number));
+  for (const part of icon.layers) {
+   const image = tileImage(images,{ image:part.source });
+   if (!image.complete && !image.tileEditorWatching) {
+    image.tileEditorWatching = true;
+    image.addEventListener('load',drawMapEditor,{once:true});
+   }
+   if (!image.complete || !image.naturalWidth) continue;
+   const w = icon.w ?? icon.sheet?.w ?? image.naturalWidth, h = icon.h ?? icon.sheet?.h ?? image.naturalHeight;
+   const scale = size/Math.max(w,h);
+   ctx.globalAlpha = part.opacity;
+   ctx.drawImage(image,icon.x ?? icon.sheet?.margin ?? 0,icon.y ?? icon.sheet?.margin ?? 0,w,h,x-w*scale/2,y-h*scale/2,w*scale,h*scale);
+  }
+ }
+ ctx.restore();
+}
+
 function drawMapEditor() {
  const map = L().tilemap;
  if (!map || tab !== 'tiles') return;
@@ -345,6 +350,7 @@ function drawMapEditor() {
   if (type) drawObjectPose(ctx, type, layoutSpritePose(type, object), images);
  }
  drawTileLayers(ctx, map, atlases, images, map.layers.filter(layer => layer.above));
+ drawTileEnumIcons(ctx,map,atlases,selectedTileLayer());
  if (tileWorkspace.grid) {
   ctx.beginPath();
   for (let row = 0; row <= map.rows; row++) {
@@ -559,7 +565,7 @@ function updateTileField(input) {
  }
  if (key === 'tile-filter') { tileWorkspace.tagFilter = input.value; drawTilePalette(selectedAtlas()); return; }
  if (key === 'tile-zoom') { tileWorkspace.zoom = Number(input.value); drawMapEditor(); return; }
- if (['tile-grid','tile-flipX','tile-flipY'].includes(key)) { tileWorkspace[key.slice(5)] = input.checked; drawMapEditor(); return; }
+ if (['tile-grid','tile-enumIcons','tile-flipX','tile-flipY'].includes(key)) { tileWorkspace[key.slice(5)] = input.checked; drawMapEditor(); return; }
  if (key === 'tile-layer') {
   const layer = selectedTileLayer();
   if (!layer) return;
@@ -591,8 +597,8 @@ function tileEditorAction(action, id) {
   case 'sample': sampleTileset(); break;
   case 'atlasSettings': { const atlas = selectedAtlas(); configureAtlas(atlas, atlas); break; }
   case 'terrain': editTerrainTile(selectedAtlas()); break;
-  case 'newEnum': configureEnum(); break;
-  case 'editEnum': configureEnum(P.enums.find(item => item.id === id)); break;
+  case 'newEnum': dataAction('newEnum'); break;
+  case 'editEnum': dataAction('enums',id); break;
   case 'tool': tileWorkspace.tool = id; renderTileEditor(); break;
   case 'layer': tileWorkspace.layer = id; renderTileEditor(); break;
   case 'addLayer': case 'duplicate': {

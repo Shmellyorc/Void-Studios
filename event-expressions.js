@@ -1,5 +1,5 @@
 const expressionFunctions = new Set([
- 'tileHasTag', 'tileColumn', 'tileRow', 'audioLevel', 'min', 'max', 'abs', 'floor', 'ceil', 'round', 'sqrt',
+ 'tileHasTag', 'tileColumn', 'tileRow', 'audioLevel', 'dataField', 'min', 'max', 'abs', 'floor', 'ceil', 'round', 'sqrt',
  'sin', 'cos', 'random', 'clamp', 'len', 'at', 'str', 'num', 'lerp',
 ]);
 const expressionPrecedence = Object.freeze({
