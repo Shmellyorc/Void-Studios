@@ -12,6 +12,7 @@ const html = source('shell.html')
   .replace('/*PIXI*/', () => pixi.toString('base64'))
   .replace('/*LICENSES*/', () => notices.join('\n'))
   .replace('/*ASSET_CSS*/', () => source('asset-workspaces.css'))
+  .replace('/*DEBUGGER_CSS*/', () => source('studio-debugger.css'))
   .replace('/*SCENE_EFFECTS*/', () => source('scene-effects.js'))
   .replace('/*BEHAVIORS*/', () => source('behaviors.js'))
   .replace('/*TILEMAP*/', () => source('tilemap.js'))
@@ -20,6 +21,7 @@ const html = source('shell.html')
   .replace('/*RUNTIME*/', () => source('runtime.js'))
   .replace('/*TILE_EDITOR*/', () => source('tile-editor.js'))
   .replace('/*ANIMATOR_EDITOR*/', () => source('animator-editor.js'))
+  .replace('/*STUDIO_DEBUGGER*/', () => source('studio-debugger.js'))
   .replace('/*EDITOR*/', () => source('editor.js'));
 
 fs.mkdirSync(output, { recursive: true });

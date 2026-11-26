@@ -280,6 +280,10 @@ function createPixiView(canvas, { report = () => {} } = {}) {
 function createRuntime(project, canvas, hooks={}) {
  const p=normalizeProjectBehaviors(structuredClone(project)),ctx=canvas.getContext('2d'),keys=new Set(),pressed=new Set(),images=new Map(),errors=new Set();
  let objects=[],vars={},layout=null,time=0,dt=0,first=true,uid=0,frame=0,raf=0,running=false,last=0,nextLayout=null,previousPairs=new Set(),timers=new Map(),previousTimers=new Map(),changed=false,paused=false;
+ const debugHooks = hooks.debugger;
+ let frameWork, stopPoint, stepRule, pausedAt, profile;
+ let excludedTime = 0;
+ const clock = () => performance.now() - excludedTime;
  const renderer=createPixiView(canvas,{report:m=>hooks.renderer?.(m)}); const types=Object.fromEntries(p.types.map(t=>[t.id,t])); const byName=Object.fromEntries(p.types.map(t=>[t.name,t.id]));
  function report(e){let msg=String(e.message||e);if(!errors.has(msg)){errors.add(msg);hooks.error?.(msg)}}
  const sheets = new Map(p.behaviorSheets.map(sheet => [sheet.id, sheet]));
@@ -353,14 +357,18 @@ function createRuntime(project, canvas, hooks={}) {
  function compile(src){src=String(src??'0');if(cache.has(src))return cache.get(src);let tok=[],r=/\s*(?:(\d+(?:\.\d*)?|\.\d+)(?:([eE][+-]?\d+))?|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_$][\w$]*)|(===|!==|==|!=|<=|>=|&&|\|\||[+\-*/%<>()!.,]))/gy,pos=0;while(pos<src.length){if(!src.slice(pos).trim())break;r.lastIndex=pos;let m=r.exec(src);if(!m)throw Error('Invalid expression near '+src.slice(pos));pos=r.lastIndex;tok.push(m[1]?['n',Number(m[1]+(m[2]||''))]:m[3]?['s',m[3].slice(1,-1).replace(/\\([nrt'"\\])/g,(_,c)=>({n:'\n',r:'\r',t:'\t'}[c]||c))]:m[4]?['id',m[4]]:['op',m[5]])}let i=0;const peek=()=>tok[i]?.[1],take=()=>tok[i++],expect=x=>{if(peek()!==x)throw Error('Expected '+x+' in '+src);i++};const prec={'||':1,'&&':2,'==':3,'===':3,'!=':3,'!==':3,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,'%':6};
  function atom(){let t=take();if(!t)throw Error('Incomplete expression: '+src);let [kind,v]=t;if(v==='('&&kind==='op'){let f=parse(0);expect(')');return f}if(kind==='op'&&['!','-','+'].includes(v)){let f=atom();return c=>v==='!'?!f(c):v==='-'?-f(c):+f(c)}if(kind==='n'||kind==='s')return ()=>v;if(kind!=='id')throw Error('Unexpected '+v);if(peek()==='('){i++;let args=[];if(peek()!==')'){do{args.push(parse(0));if(peek()!==',')break;i++}while(true)}expect(')');if(!Object.hasOwn(functions,v))throw Error('Unknown function '+v);return c=>functions[v](...args.map(f=>f(c)))}let path=[v];while(peek()==='.'){i++;let q=take();if(q?.[0]!=='id')throw Error('Expected property');path.push(q[1])}return c=>resolve(path,c)}
  function parse(min){let a=atom();while(prec[peek()]>=min&&prec[peek()]!==undefined){let op=take()[1],b=parse(prec[op]+1),prev=a;a=c=>{let x=prev(c);if(op==='&&')return x&&b(c);if(op==='||')return x||b(c);let y=b(c);switch(op){case '+':return x+y;case '-':return x-y;case '*':return x*y;case '/':return x/y;case '%':return x%y;case '==':case '===':return x===y;case '!=':case '!==':return x!==y;case '<':return x<y;case '>':return x>y;case '<=':return x<=y;case '>=':return x>=y}}}return a}let f=parse(0);if(i!==tok.length)throw Error('Unexpected token in '+src);cache.set(src,f);return f}
- const callStack=[];const functionDefs=new Map(p.layouts.flatMap(l=>l.events.filter(e=>e.functionName).map(e=>[e.functionName,e])));function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse')v=mouse;else if(a==='Camera'&&rest.length&&!Object.hasOwn(byName,a))v=camera.view;else if(a==='Enums'&&rest.length&&Object.keys(enums).length)v=enums;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
+ const callStack = [];
+ const layoutSource = level => ({ kind: 'layout', id: level.id, name: level.name });
+ const functionDefs = new Map(p.layouts.flatMap(level => level.events.filter(event => event.functionName)
+  .map(event => [event.functionName, { event, source: layoutSource(level) }])));
+ function resolve(path,c){let [a,...rest]=path;if(a==='dt')return dt;if(a==='time')return time;if(a==='true')return true;if(a==='false')return false;if(a==='pi')return Math.PI;if(a==='index')return c.index||0;if(a==='count')return objects.filter(o=>!o.dead).length;let v;let local=callStack.at(-1);if(local&&Object.hasOwn(local.params,a))v=local.params[a];else if(a==='global')v=vars;else if(a==='Self'||a==='self')v=c.owner?.object??c.target;else if(a==='Target'&&c.owner)v=c.target;else if(a==='Settings'&&c.owner)v=c.owner.settings;else if(a==='Mouse')v=mouse;else if(a==='Camera'&&rest.length&&!Object.hasOwn(byName,a))v=camera.view;else if(a==='Enums'&&rest.length&&Object.keys(enums).length)v=enums;else if(Object.hasOwn(byName,a))v=pick(c.scope,byName[a])[0];else if(Object.hasOwn(vars,a))v=vars[a];else throw Error('Unknown name '+a);for(let k of rest){if(v==null)return 0;if(Object.hasOwn(v,k))v=v[k];else if(v.vars&&Object.hasOwn(v.vars,k))v=v.vars[k];else if(k==='width')v=v.w;else if(k==='height')v=v.h;else return 0}return v??0}
  const attachedSheets = [...behaviorPlans.values()].flatMap(plan => plan.custom.map(({ sheet }) => sheet));
  function containsCollision(events) {
   return events.some(event => event.conditions.some(condition => condition.kind === 'collision') ||
    containsCollision(event.children || []));
  }
  const checksBehaviorCollisions = attachedSheets.some(sheet => containsCollision(sheet.events)) ||
-  (attachedSheets.length > 0 && containsCollision([...functionDefs.values()]));
+  (attachedSheets.length > 0 && containsCollision([...functionDefs.values()].map(definition => definition.event)));
 
  function matchingPair(kind, a, b, owner) {
   if (kind === 'overlap') return overlap(a, b);
@@ -403,8 +411,81 @@ function createRuntime(project, canvas, hooks={}) {
   return Boolean(state?.eventFrame === frame && state.status === (kind === 'navArrived' ? 'arrived' : 'failed'));
  }
  function condition(c,s,eventId,index,owner){let a=c.args||{},id=a.object,other=a.other,ok=false,out=[];const val=(e,o)=>expr(e,s,o,index,owner);switch(c.kind){case 'start':ok=first;break;case 'created':ok=owner?.created??false;break;case 'tick':ok=true;break;case 'keyDown':ok=keyDown(a.key);break;case 'keyPressed':ok=pressed.has(norm(a.key));break;case 'mousePressed':ok=mouse.clicked;break;case 'compare':ok=!!val(a.expr);break;case 'every':ok=timerFired(eventId, Number(val(a.seconds)) || 1, owner);break;case 'exists':ok=pick(s,id,owner).length>0;break;case 'navigating':case 'navArrived':case 'navFailed':{const matches=pick(s,id,owner).filter(o=>navigationCondition(c.kind,o)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'tileTag':{const matches=pick(s,id,owner).filter(o=>tileHasTag(a.layer,o.x+o.w/2,o.y+o.h+1e-6,a.tag)!==Boolean(c.invert));return matches.length?[narrow(s,id,matches)]:[]}case 'clipPlaying':case 'clipFinished':{const matches=pick(s,id,owner).filter(o=>{const state=o.animation;const active=c.kind==='clipPlaying'?state?.playing:state?.finished;return Boolean(active&&(!a.clip||state.clip.name===a.clip))!==Boolean(c.invert)});return matches.length?[narrow(s,id,matches)]:[]}case 'filter':{let matches=pick(s,id,owner).filter(o=>!!val(a.expr,o)!==!!c.invert);return matches.length?[narrow(s,id,matches)]:[]}case 'overlap':case 'collision':{if(c.invert){let m=pick(s,id,owner).filter(o=>!pick(s,other,owner).some(b=>matchingPair(c.kind,o,b,owner)));return m.length?[narrow(s,id,m)]:[]}for(let o of pick(s,id,owner))for(let b of pick(s,other,owner)){if(!matchingPair(c.kind,o,b,owner))continue;let n=narrow(s,id,[o]);n=narrow(n,other,id===other?[o,b]:[b]);out.push(n)}return out}default:throw Error('Unknown condition '+c.kind)}return ok!==!!c.invert?[s]:[]}
- function action(a,s,index,owner){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false};callStack.push(local);try{executeEvent(def,s,index,owner)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
- function executeEvent(e,scope={},index=0,owner){if(e.disabled)return;try{let scopes=[scope];if(e.mode==='or'&&e.conditions.length){let matches=e.conditions.flatMap((c,i)=>condition(c,scope,e.id+':'+i,index,owner));let seen=new Set();scopes=matches.filter(s=>{let k=JSON.stringify(Object.keys(s).sort().map(id=>[id,s[id].map(o=>o.id).sort()]));if(seen.has(k))return false;seen.add(k);return true})}else for(let [i,c] of e.conditions.entries()){scopes=scopes.flatMap(s=>condition(c,s,e.id+':'+i,index,owner));if(!scopes.length)break}for(let s of scopes){let repeat=clamp(Math.floor(Number(expr(e.repeat||'1',s,null,index,owner)))||0,0,1000);for(let j=0;j<repeat;j++){for(let a of e.actions){action(a,s,j,owner);if(callStack.at(-1)?.returned)return}for(let child of e.children||[]){executeEvent(child,s,j,owner);if(callStack.at(-1)?.returned)return}}}}catch(err){report(err)}}
+ function* action(a,s,index,owner,depth,parents){let q=a.args||{},id=q.object,ev=(x,o)=>expr(x,s,o,index,owner);switch(a.kind){case 'call':{let def=functionDefs.get(q.name);if(!def)throw Error('Unknown visual function '+q.name);if(callStack.length>=32)throw Error('Function recursion limit');let names=def.event.params||[],values=JSON.parse(q.values||'[]');if(!Array.isArray(values)||values.length!==names.length)throw Error('Expected '+names.length+' argument expressions');let params=Object.fromEntries(names.map((n,i)=>[n,ev(values[i])]));let local={params,result:null,returned:false,name:q.name};callStack.push(local);try{yield* runSheet([def.event],def.source,s,owner,depth+1,parents,index,true)}finally{callStack.pop()}if(q.result)vars[q.result]=local.result;break}case 'return':{let local=callStack.at(-1);if(!local)throw Error('Return outside function');local.result=ev(q.value);local.returned=true;break}case 'setLocal':{let local=callStack.at(-1);if(!local)throw Error('Local variable outside function');local.params[q.name]=ev(q.value);break}case 'setEntry':{let a=vars[q.name],k=ev(q.key);if(!a||typeof a!=='object'||['__proto__','prototype','constructor'].includes(String(k)))throw Error('Invalid collection or key');if(Array.isArray(a)&&(!Number.isInteger(k)||k<0||k>100000))throw Error('Invalid array index');a[k]=ev(q.value);break}case 'setGlobal':vars[q.name]=ev(q.value);break;case 'addGlobal':vars[q.name]=(vars[q.name]??0)+ev(q.value);break;case 'create':if(types[id])objects.push(make(types[id],{x:Number(ev(q.x)),y:Number(ev(q.y))}));break;case 'layout':nextLayout=q.layout;break;case 'restart':nextLayout=layout.id;break;case 'cameraFollow':{const targets=pick(s,id,owner);if(targets.length)camera.follow(targets[0]);break}case 'cameraPosition':camera.position(Number(ev(q.x)),Number(ev(q.y)));break;case 'cameraZoom':camera.zoom(Number(ev(q.zoom)));break;case 'cameraShake':camera.shake(Number(ev(q.strength)),Number(ev(q.duration)));break;case 'log':hooks.log?.(String(ev(q.value)));break;case 'sound':beep(Number(ev(q.frequency)),Number(ev(q.duration)));break;default:for(let o of pick(s,id,owner)){let v;switch(a.kind){case 'emitParticles':{const settings=behaviorPlans.get(o.type).emitter;if(!settings)throw Error('Attach Particle Emitter before emitting');particles.emit(o,settings,Number(ev(q.count,o)));break}case 'navigate':navigate(o,Number(ev(q.x,o)),Number(ev(q.y,o)),Boolean(ev(q.restart??'false',o)));break;case 'stopNavigation':delete o.navigation;break;case 'moveSolid':moveAxis(o,Number(ev(q.x,o)),Number(ev(q.y,o)),solids);break;case 'destroy':o.dead=true;break;case 'playClip':playSpriteClip(o,types[o.type],q.clip,Boolean(ev(q.restart??'false',o)));break;case 'stopClip':if(o.animation){o.animation.playing=false;o.animation.stopped=true;}break;case 'animation':if(o.animation){o.animation.playing=false;o.animation.stopped=true;delete o.pose.frame}o.animTime=Number(ev(q.value,o))/(types[o.type].sheet?.fps||1);o.animFrame=Math.floor(Number(ev(q.value,o)));break;case 'damage':o.vars.Health=Math.max(0,(Number(o.vars.Health)||0)-Math.max(0,Number(ev(q.value,o))));break;case 'heal':o.vars.Health=Math.min(Number(o.vars.MaxHealth)||100,(Number(o.vars.Health)||0)+Math.max(0,Number(ev(q.value,o))));break;case 'set':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]=Number(v);else if(q.property==='visible')o.visible=!!v;else if(q.property==='text')o.text=String(v);else o.vars[q.property]=v;break;case 'add':v=ev(q.value,o);if(['x','y','w','h','angle','opacity','vx','vy'].includes(q.property))o[q.property]+=Number(v);else o.vars[q.property]=(o.vars[q.property]??0)+v;break;case 'position':o.x=Number(ev(q.x,o));o.y=Number(ev(q.y,o));break;case 'jump':if(o.ground){o.vy=-Math.abs(Number(ev(q.value,o)));o.ground=false}break;case 'text':o.text=String(ev(q.value,o));break;case 'instance':o.vars[q.name]=ev(q.value,o);break}}}}
+ function executionPoint(event, source, scope, owner, depth, parents, conditions, index, actionIndex, breakpoint = false) {
+  const target = event.actions[actionIndex ?? 0]?.args?.object;
+  const selected = new Set(Object.values(scope).flat().filter(object => !object.dead).map(object => object.id));
+  if (target) for (const object of pick(scope, target, owner)) selected.add(object.id);
+  if (owner && !owner.object.dead) selected.add(owner.object.id);
+  return {
+   source, id: event.id, depth, parents, conditions: conditions ? [...conditions] : [], index, actionIndex, breakpoint,
+   selected: [...selected], calls: callStack.map(entry => entry.name), callDepth: callStack.length, frame,
+  };
+ }
+
+ function* executeEvent(event, scope, index, owner, source, depth, parents) {
+  if (event.disabled) return;
+  try {
+   const breakpoint = debugHooks?.hasBreakpoint?.(source, event.id) ?? false;
+   const tracing = debugHooks?.isTracing?.() ?? false;
+   const conditions = breakpoint || tracing || stepRule ? Array(event.conditions.length).fill(null) : null;
+   const evaluateCondition = (block, blockIndex, scope) => {
+    const matches = condition(block, scope, event.id + ':' + blockIndex, index, owner);
+    if (conditions && (!conditions[blockIndex] || matches.length)) conditions[blockIndex] = matches.length > 0;
+    return matches;
+   };
+   let scopes = [scope];
+   if (event.mode === 'or' && event.conditions.length) {
+    const matches = event.conditions.flatMap((block, blockIndex) => evaluateCondition(block, blockIndex, scope));
+    const seen = new Set();
+    scopes = matches.filter(scope => {
+     const key = JSON.stringify(Object.keys(scope).sort().map(id => [id, scope[id].map(object => object.id).sort()]));
+     if (seen.has(key)) return false;
+     seen.add(key);
+     return true;
+    });
+   } else {
+    for (const [blockIndex, block] of event.conditions.entries()) {
+     scopes = scopes.flatMap(scope => evaluateCondition(block, blockIndex, scope));
+     if (!scopes.length) break;
+    }
+   }
+   const trail = debugHooks ? [...parents, { source, id: event.id }] : parents;
+   for (const selectedScope of scopes) {
+    const repeat = clamp(Math.floor(Number(expr(event.repeat || '1', selectedScope, null, index, owner))) || 0, 0, 1000);
+    for (let j = 0; j < repeat; j++) {
+     if (breakpoint || tracing) {
+      const point = executionPoint(event, source, selectedScope, owner, depth, parents, conditions, j, null, breakpoint);
+      if (tracing) debugHooks.trace?.(point);
+      if (breakpoint) yield point;
+     }
+     for (const [actionIndex, block] of event.actions.entries()) {
+      if (stepRule) yield executionPoint(event, source, selectedScope, owner, depth, parents, conditions, j, actionIndex);
+      yield* action(block, selectedScope, j, owner, depth, trail);
+      if (callStack.at(-1)?.returned) return;
+     }
+     for (const child of event.children || []) {
+      yield* executeEvent(child, selectedScope, j, owner, source, depth + 1, trail);
+      if (callStack.at(-1)?.returned) return;
+     }
+    }
+   }
+  } catch (error) { report(error); }
+ }
+
+ function* runSheet(events, source, scope = {}, owner, depth = 0, parents = [], index = 0, call = false) {
+  const started = profile ? clock() : 0;
+  for (const event of events) {
+   if ((!call && owner?.object.dead) || callStack.at(-1)?.returned) break;
+   if (!call && event.functionName) continue;
+   yield* executeEvent(event, scope, index, owner, source, depth, parents);
+  }
+  if (profile) addDuration(profile.sheets, source.kind + ':' + source.name, clock() - started);
+ }
+
+ function addDuration(samples, name, ms) {
+  samples[name] = (samples[name] ?? 0) + ms;
+ }
  function moveAxis(object, dx, dy, solids) {
   const moveX = tileLimitMotion(layout.tilemap, tileSolids, object, dx, 'x');
   object.x += moveX;
@@ -444,13 +525,19 @@ function createRuntime(project, canvas, hooks={}) {
    if (object.dead) continue;
    const { builtIn } = behaviorPlans.get(object.type);
    for (const { definition, settings } of builtIn) {
-    if (!definition.afterAnimation) definition.step(object, settings, environment);
+    if (!definition.afterAnimation) runBehavior(definition, object, settings, environment);
    }
    advanceSpriteAnimation(object, types[object.type], dt);
    for (const { definition, settings } of builtIn) {
-    if (definition.afterAnimation) definition.step(object, settings, environment);
+    if (definition.afterAnimation) runBehavior(definition, object, settings, environment);
    }
   }
+ }
+
+ function runBehavior(definition, object, settings, environment) {
+  const started = profile ? clock() : 0;
+  definition.step(object, settings, environment);
+  if (profile) addDuration(profile.behaviors, definition.name, clock() - started);
  }
 
  function timerFired(eventId, interval, owner) {
@@ -467,7 +554,7 @@ function createRuntime(project, canvas, hooks={}) {
   return current.get(key);
  }
 
- function runCustomBehaviors() {
+ function* runCustomBehaviors() {
   for (let i = 0, count = objects.length; i < count; i++) {
    const object = objects[i];
    const clock = instanceClocks.get(object);
@@ -476,10 +563,8 @@ function createRuntime(project, canvas, hooks={}) {
    for (const { sheet, settings } of behaviorPlans.get(object.type).custom) {
     const owner = { ...clock, object, sheet, settings, timers };
     const scope = { [SELF_TARGET]: [object] };
-    for (const event of sheet.events) {
-     if (object.dead) break;
-     executeEvent(event, scope, 0, owner);
-    }
+    const source = { kind: 'behavior', id: sheet.id, name: sheet.name };
+    yield* runSheet(sheet.events, source, scope, owner);
    }
    clock.created = false;
   }
@@ -542,9 +627,10 @@ function createRuntime(project, canvas, hooks={}) {
   return pairs;
  }
 
- function step(delta = 1 / 60) {
-  if (paused) return;
-  const started = performance.now();
+ function* executeFrame(delta) {
+  const started = clock();
+  profile = debugHooks?.isProfiling?.() ? { simulation: 0, events: 0, rendering: 0, total: 0,
+   sheets: Object.create(null), behaviors: Object.create(null) } : null;
   dt = clamp(delta, 0, .05);
   time += dt;
   frame++;
@@ -552,12 +638,16 @@ function createRuntime(project, canvas, hooks={}) {
   changed = false;
   particles.advance(dt);
   runBuiltInBehaviors();
-  // Custom sheets see the same contacts even if an earlier sheet moves an object.
   if (checksBehaviorCollisions) currentBehaviorPairs = collectCollisionPairs();
-  runCustomBehaviors();
+  if (profile) profile.simulation = clock() - started;
+  let phaseStarted = profile ? clock() : 0;
+  yield* runCustomBehaviors();
+  if (profile) { profile.events = clock() - phaseStarted; phaseStarted = clock(); }
   if (checksBehaviorCollisions) previousBehaviorPairs = currentBehaviorPairs;
   const layoutPairs = collectCollisionPairs();
-  for (const event of layout.events) if (!event.functionName) executeEvent(event);
+  if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
+  yield* runSheet(layout.events, layoutSource(layout));
+  if (profile) { profile.events += clock() - phaseStarted; phaseStarted = clock(); }
   objects = objects.filter(object => !object.dead);
   previousPairs = layoutPairs;
   first = false;
@@ -565,18 +655,87 @@ function createRuntime(project, canvas, hooks={}) {
   mouse.clicked = false;
   if (nextLayout) enter(nextLayout);
   else { camera.place(dt, objects); updateMouseWorld(); }
+  if (profile) { profile.simulation += clock() - phaseStarted; phaseStarted = clock(); }
   draw();
+  if (profile) { profile.rendering = clock() - phaseStarted; profile.total = clock() - started; }
   hooks.tick?.({
-   ms: performance.now() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine,
-   vars: { ...vars }, count: objects.length, particles: particles.items.length, layout: layout.name, frame, time,
+   ms: clock() - started, fps: dt ? 1 / dt : 0, renderer: renderer.engine,
+   vars: { ...vars }, count: objects.length, particles: particles.items.length, layout: layout.name, frame, time, profile,
    objects: objects.map(object => ({ ...object, vars: { ...object.vars } })),
   });
  }
- function loop(now){if(!running)return;let d=last?(now-last)/1000:1/60;last=now;step(d);raf=requestAnimationFrame(loop)}
+
+ function restoreDebugClock() {
+  if (pausedAt === undefined) return;
+  excludedTime += performance.now() - pausedAt;
+  pausedAt = undefined;
+ }
+
+ function step(delta = 1 / 60) {
+  if (paused) return;
+  restoreDebugClock();
+  frameWork ??= executeFrame(delta);
+  while (frameWork) {
+   const result = frameWork.next();
+   if (result.done) { frameWork = null; break; }
+   const point = result.value;
+   if (point.breakpoint || (stepRule && point.actionIndex !== null && point.callDepth <= stepRule.callDepth)) {
+    paused = true;
+    last = 0;
+    pausedAt = performance.now();
+    stopPoint = point;
+    stepRule = null;
+    draw();
+    debugHooks?.onPause?.(point);
+    break;
+   }
+  }
+ }
+
+ function discardFrame() {
+  frameWork?.return();
+  frameWork = stopPoint = stepRule = null;
+  restoreDebugClock();
+  profile = null;
+ }
+
+ function pause(value) {
+  paused = value;
+  last = 0;
+  if (!value) { stopPoint = stepRule = null; restoreDebugClock(); }
+  else if (frameWork && pausedAt === undefined) pausedAt = performance.now();
+ }
+
+ function debugCommand(mode) {
+  if (!debugHooks) return;
+  if (mode === 'pause') {
+   pause(true);
+   stepRule = null;
+   debugHooks.onPause?.(stopPoint);
+   return;
+  }
+  const point = stopPoint;
+  pause(false);
+  if (mode === 'into' || mode === 'over') {
+   stepRule = { callDepth: mode === 'over' && point ? point.callDepth : Infinity };
+  }
+  debugHooks.onResume?.(mode);
+  if (mode === 'continue') return;
+  step();
+  if (mode === 'frame' && !paused) { pause(true); debugHooks.onPause?.(null); }
+ }
+
+ function loop(now) {
+  if (!running) return;
+  const delta = last ? (now - last) / 1000 : 1 / 60;
+  last = paused ? 0 : now;
+  step(delta);
+  raf = requestAnimationFrame(loop);
+ }
  function key(e,down){let k=norm(e.key);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k);if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k))e.preventDefault()}
- const kd=e=>key(e,true),ku=e=>key(e,false),blur=()=>{keys.clear();pressed.clear();mouse.down=false},mm=e=>{const r=canvas.getBoundingClientRect();pointer={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};updateMouseWorld()},md=e=>{mm(e);mouse.down=true;mouse.clicked=true},mu=()=>mouse.down=false;
+ const kd=e=>{if(!debugHooks||!e.target?.closest?.('button,input,select,textarea'))key(e,true)},ku=e=>{if(!debugHooks||keys.has(norm(e.key)))key(e,false)},blur=()=>{keys.clear();pressed.clear();mouse.down=false},mm=e=>{const r=canvas.getBoundingClientRect();pointer={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};updateMouseWorld()},md=e=>{mm(e);mouse.down=true;mouse.clicked=true},mu=()=>mouse.down=false;
  let audio=null;function beep(f,d){try{audio??=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();let osc=audio.createOscillator(),gain=audio.createGain();osc.type='triangle';osc.frequency.value=clamp(f||440,40,4000);gain.gain.setValueAtTime(.07,audio.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+clamp(d||.1,.02,1));osc.connect(gain);gain.connect(audio.destination);osc.start();osc.stop(audio.currentTime+clamp(d||.1,.02,1))}catch{}}
- function reset(id){frame=0;vars=Object.fromEntries(p.globals.map(v=>[v.name,structuredClone(v.value)]));enter(id);draw()}
+ function reset(id){discardFrame();frame=0;vars=Object.fromEntries(p.globals.map(v=>[v.name,structuredClone(v.value)]));enter(id);draw();debugHooks?.onReset?.(paused)}
  async function startRenderer() {
   if (p.renderer === 'canvas') {
    hooks.renderer?.('Canvas 2D · selected');
@@ -593,6 +752,6 @@ function createRuntime(project, canvas, hooks={}) {
    if (running) hooks.renderer?.('Canvas 2D · ' + error.message);
   }
  }
- reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause(v){paused=v;last=0},step,reset,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
+ reset(p.activeLayout);return {start(){if(running)return;running=true;startRenderer();window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);window.addEventListener('blur',blur);canvas.addEventListener('pointermove',mm);canvas.addEventListener('pointerdown',md);window.addEventListener('pointerup',mu);raf=requestAnimationFrame(loop)},stop(){running=false;discardFrame();cancelAnimationFrame(raf);window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);window.removeEventListener('blur',blur);canvas.removeEventListener('pointermove',mm);canvas.removeEventListener('pointerdown',md);window.removeEventListener('pointerup',mu);audio?.close();renderer.close()},pause,step,reset,debugCommand,inspect:()=>({vars,objects,layout:layout.id,camera:{...camera.view},particles:particles.items,frame}),key(k,down=true){k=norm(k);if(down){if(!keys.has(k))pressed.add(k);keys.add(k)}else keys.delete(k)},evaluate:(s)=>expr(s,{})}
 }
 function drawObject(ctx,t,o,images){let w=o.w,h=o.h;ctx.imageSmoothingEnabled=false;let c=t.color||'#90c1ce';if(t.kind==='text'){ctx.fillStyle=c;ctx.font=`bold ${Math.max(10,h*.75)}px monospace`;ctx.textBaseline='middle';ctx.fillText(o.text??t.text??'',-w/2,0,w);return}if(t.image){let im=images.get(t.image);if(!im){im=new Image();im.src=t.image;images.set(t.image,im)}if(im.complete&&im.naturalWidth){let sh=t.sheet;if(sh&&sh.count>0&&sh.cols>0){let f=Math.max(0,Math.min(sh.count-1,o.animFrame||0)),sx=(sh.margin||0)+(f%sh.cols)*(sh.w+(sh.spacing||0)),sy=(sh.margin||0)+Math.floor(f/sh.cols)*(sh.h+(sh.spacing||0));ctx.drawImage(im,sx,sy,sh.w,sh.h,-w/2,-h/2,w,h)}else ctx.drawImage(im,-w/2,-h/2,w,h);return}}ctx.fillStyle=c;if(t.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffffff50';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#ffffff90';ctx.fillRect(-w*.16,-h*.22,w*.17,h*.17)}else if(t.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-h/2);ctx.lineTo(w/2,0);ctx.lineTo(0,h/2);ctx.lineTo(-w/2,0);ctx.closePath();ctx.fill();ctx.strokeStyle='#ffffff70';ctx.stroke()}else{ctx.fillRect(-w/2,-h/2,w,h);ctx.fillStyle='#ffffff22';ctx.fillRect(-w/2,-h/2,w,Math.min(5,h/4));ctx.fillStyle='#00000030';ctx.fillRect(-w/2,h/2-4,w,4);if(t.shape==='player'){ctx.fillStyle='#f4f1d6';ctx.fillRect(-w*.26,-h*.2,w*.16,h*.16);ctx.fillRect(w*.1,-h*.2,w*.16,h*.16);ctx.fillStyle='#182534';ctx.fillRect(-w*.15,h*.13,w*.3,h*.1)}if(t.shape==='enemy'){ctx.fillStyle='#171a25';ctx.fillRect(-w*.3,-h*.1,w*.2,h*.18);ctx.fillRect(w*.1,-h*.1,w*.2,h*.18)}}}

@@ -94,6 +94,26 @@ and objects with **Solid** on both orthogonal and isometric maps. **On
 destination reached** and **On navigation failed** fire once per attempt. Use
 **Stop navigation** to cancel an active route.
 
+## Debugger and profiler
+
+Click the breakpoint dot on a visual event and choose **Play**. When the
+event matches, the preview opens its sheet and highlights the next action.
+The live sheet shows condition results and picked instances. Select an instance
+to inspect its position, animation, navigation state, and variables alongside
+the globals. The preview can also set or remove breakpoints while the game is
+running. Breakpoints stay in the editor session.
+
+Use **Step Into** to enter a visual function and **Step Over** to finish the
+current call before stopping at the next action. **Frame** runs the rest of the
+current frame, or one frame from a manual pause. Turn on **Trace** to review
+recent hits across layout and custom behavior sheets. **Follow** moves the live
+sheet to the latest hit.
+
+The **Profiler** captures rolling CPU timings for simulation, visual events,
+and rendering. It shows inclusive timings by event sheet and timings by
+built-in behavior. Time spent at a breakpoint is excluded. Exported games run
+with the editor debugger inactive.
+
 ## Package a desktop app
 
 Run these commands on Windows, macOS, or Linux to build for that host.
