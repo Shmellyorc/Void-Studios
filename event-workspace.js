@@ -123,16 +123,21 @@ function renderEventRows() {
     </div>`;
   }).join('')+`<button class="addblock" data-act="addblock:${which}:${row.id}">+ Add ${which==='C'?'condition':'action'}</button>`;
  }
- function rows(list,depth=0,parentColor) {
+ function rows(list,depth=0,parentColor,disabledGroup) {
   return list.map(row=>{
    const collapsed=eventWorkspace.collapsed.has(row.id);
+   // Visual functions can be called from outside their enclosing group.
+   const inheritedDisabled=row.functionName?undefined:disabledGroup;
+   const disabled=row.disabled||inheritedDisabled;
+   const inheritedStatus=inheritedDisabled
+    ? `<span class="event-disabled-status" title="Disabled by ${esc(inheritedDisabled)}">Group disabled</span>` : '';
    const grip=`<span class="event-grip" draggable="true" data-drag-event="${row.id}" title="Drag to reorder">⠿</span>`;
    const tail=`<span class="event-spacer"></span>${button('↑','up:'+row.id)}${button('↓','down:'+row.id)}
-     ${button(row.disabled?'Enable':'Disable','toggle:'+row.id)}${button('×','delevent:'+row.id,'danger')}`;
+     ${inheritedStatus}${button(row.disabled?'Enable':'Disable','toggle:'+row.id)}${button('×','delevent:'+row.id,'danger')}`;
    if (row.group) {
     const accent=eventGroupColor(row.id,parentColor);
-    const children=rows(row.children,depth+1,accent);
-    return `<div class="event-entry event-group ${row.disabled?'event-group-disabled':''}" data-event-entry="${row.id}" data-event-group
+    const children=rows(row.children,depth+1,accent,row.disabled?row.group:inheritedDisabled);
+    return `<div class="event-entry event-group ${disabled?'event-group-disabled':''}" data-event-entry="${row.id}" data-event-group
       style="--depth:${Math.min(6,depth)};--group-accent:${accent}">
      <div class="event-group-heading">${grip}
       <button type="button" data-act="evt:collapse:${row.id}" aria-expanded="${!collapsed}">${collapsed?'▸':'▾'} ${esc(row.group)}</button>
@@ -143,13 +148,13 @@ function renderEventRows() {
    }
    if (row.include) {
     const target=(P.eventSheets??[]).find(sheet=>sheet.id===row.include);
-    return `<div class="event-entry event-include ${row.disabled?'disabled':''}" data-event-entry="${row.id}" style="--depth:${Math.min(6,depth)}">
+    return `<div class="event-entry event-include ${disabled?'disabled':''}" data-event-entry="${row.id}" style="--depth:${Math.min(6,depth)}">
      <div class="event-group-heading">${grip}<span>Include</span>${button(target?.name??'Unavailable sheet','evt:open:'+row.include)}
       ${button('Move','evt:move:'+row.id)}${tail}</div>
     </div>`;
    }
-   const count=++number, children=rows(row.children??[],depth+1,parentColor);
-   return `<div class="event event-entry ${row.disabled?'disabled':''}" data-event-entry="${row.id}" style="--depth:${Math.min(6,depth)}">
+   const count=++number, children=rows(row.children??[],depth+1,parentColor,inheritedDisabled);
+   return `<div class="event event-entry ${disabled?'disabled':''}" data-event-entry="${row.id}" style="--depth:${Math.min(6,depth)}">
     ${row.comment?'<p class="event-annotation event-note">'+esc(row.comment)+'</p>':''}
     <div class="eventbar">${grip}${editorBreakpointButton(row)}<span class="eventno">${count}</span>
      ${button('JS','eventJS:'+count,'event-js-button')}

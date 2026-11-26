@@ -139,6 +139,8 @@
 }
 .event-scope .eventbar { background:color-mix(in srgb,var(--group-accent) 10%,#303c49); }
 .event-group-disabled,.event-include.disabled { opacity:.55; }
+.event-group-disabled + .event-scope[data-guide]::before { opacity:.3; }
+.event-disabled-status { color:var(--text); font-size:11px; font-weight:600; }
 .event-grip { cursor:grab; color:#a6baca; padding:3px 1px; user-select:none; }
 .event-grip:active { cursor:grabbing; }
 .event-drop { box-shadow:inset 0 2px var(--accent); }
