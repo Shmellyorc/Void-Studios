@@ -130,6 +130,28 @@ function tileSolidCells(map, atlases) {
  return occupied;
 }
 
+function* solidTilesInBox(map, occupied, left, top, right, bottom) {
+ const corners = [left, right].flatMap(x => [top, bottom].map(y => tileGridPoint(map, x, y)));
+ const [columns, rows] = [0, 1].map(index => corners.map(point => point[index]));
+ for (let row = Math.max(0, Math.floor(Math.min(...rows))); row <= Math.min(map.rows - 1, Math.floor(Math.max(...rows))); row++) {
+  for (let column = Math.max(0, Math.floor(Math.min(...columns))); column <= Math.min(map.columns - 1, Math.floor(Math.max(...columns))); column++) {
+   if (occupied.has(`${column},${row}`)) yield tileCellCenter(map, column, row);
+  }
+ }
+}
+
+function tileBlocksRectangle(map, occupied, left, top, width, height) {
+ if (!occupied.size) return false;
+ const right = left + width, bottom = top + height;
+ const w = map.cellWidth / 2, h = map.cellHeight / 2;
+ for (const [x, y] of solidTilesInBox(map, occupied, left, top, right, bottom)) {
+  const nx = Math.max(left - x, x - right, 0) / w;
+  const ny = Math.max(top - y, y - bottom, 0) / h;
+  if (map.orientation === 'isometric' ? nx + ny < 1 - 1e-8 : nx < 1 && ny < 1) return true;
+ }
+ return false;
+}
+
 function tileLimitMotion(map, occupied, object, distance, axis) {
  if (!distance || !occupied.size) return distance;
  const horizontal = axis === 'x';
@@ -139,14 +161,9 @@ function tileLimitMotion(map, occupied, object, distance, axis) {
  const crossEnd = crossStart + (horizontal ? object.h : object.w);
  const dimensions = horizontal ? [map.cellWidth / 2, map.cellHeight / 2] : [map.cellHeight / 2, map.cellWidth / 2];
  const along = [Math.min(start, start + distance), Math.max(edge, edge + distance)];
- const corners = along.flatMap(position => [crossStart, crossEnd].map(cross =>
-  tileGridPoint(map, ...(horizontal ? [position, cross] : [cross, position]))));
- const [columns, rows] = [0, 1].map(index => corners.map(point => point[index]));
+ const box = horizontal ? [along[0], crossStart, along[1], crossEnd] : [crossStart, along[0], crossEnd, along[1]];
  let allowed = distance;
- for (let row = Math.max(0, Math.floor(Math.min(...rows))); row <= Math.min(map.rows - 1, Math.floor(Math.max(...rows))); row++) {
-  for (let column = Math.max(0, Math.floor(Math.min(...columns))); column <= Math.min(map.columns - 1, Math.floor(Math.max(...columns))); column++) {
-   if (!occupied.has(`${column},${row}`)) continue;
-   const [x, y] = tileCellCenter(map, column, row);
+ for (const [x, y] of solidTilesInBox(map, occupied, ...box)) {
    const center = horizontal ? x : y;
    const crossCenter = horizontal ? y : x;
    const crossDistance = Math.max(crossStart - crossCenter, crossCenter - crossEnd, 0);
@@ -156,7 +173,6 @@ function tileLimitMotion(map, occupied, object, distance, axis) {
    const tolerance = 1e-8;
    if (distance > 0 && edge <= low + tolerance) allowed = Math.min(allowed, Math.max(0, low - edge));
    if (distance < 0 && start >= high - tolerance) allowed = Math.max(allowed, Math.min(0, high - start));
-  }
  }
  return allowed;
 }

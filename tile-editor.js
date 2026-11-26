@@ -12,7 +12,7 @@ const selectedTileLayer = () => L().tilemap?.layers.find(layer => layer.id === t
 const selectedAtlas = () => P.tilesets.find(atlas => atlas.id === tileWorkspace.atlas);
 
 function validateAssetProject(project) {
- project.version = 3;
+ project.version = 4;
  project.tilesets ??= [];
  project.enums ??= [];
  if (!Array.isArray(project.tilesets) || !Array.isArray(project.enums)) throw Error('Invalid project assets');
@@ -32,6 +32,7 @@ function validateAssetProject(project) {
    enumType.values.some(value => !value || typeof value.id !== 'string' || !validSettingName(value.name))) throw Error('Invalid project enum');
  }
  for (const layout of project.layouts) {
+  if (layout.camera && !validSceneCamera(layout.camera)) throw Error('Invalid camera settings');
   const map = layout.tilemap;
   if (!map) continue;
   if (!['orthogonal', 'isometric'].includes(map.orientation) || !Array.isArray(map.layers) ||

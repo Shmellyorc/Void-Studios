@@ -22,6 +22,11 @@ const BUILT_IN_BEHAVIORS = Object.freeze({
  solid: {
   name: 'Solid', description: 'Block objects that move with solid collisions.', fields: [],
  },
+ pathfinding: {
+  name: 'Tilemap Pathfinding', description: 'Follow routes around solid tiles after a Navigate to point action.',
+  fields: [['speed', 'Speed (px/s)', 110]],
+  step(object, { speed }, { followPath }) { followPath(object, speed); },
+ },
  bullet: {
   name: 'Bullet', description: 'Travel continuously in the direction the object faces.',
   fields: [['speed', 'Speed (px/s)', 150], ['bounce', 'Bounce at layout edges', false]],
@@ -59,6 +64,21 @@ const BUILT_IN_BEHAVIORS = Object.freeze({
    object.x = clamp(object.x, 0, layout.width - object.w);
    object.y = clamp(object.y, 0, layout.height - object.h);
   },
+ },
+ particles: {
+  name: 'Particle Emitter', description: 'Emit colored or animated sprite particles continuously or in bursts.',
+  fields: [
+   ['sprite', 'Particle sprite', particleDefaults.sprite], ['clip', 'Animation clip', particleDefaults.clip], ['animationSpeed', 'Animation speed', particleDefaults.animationSpeed],
+   ['rate', 'Particles per second (0 for bursts)', particleDefaults.rate], ['lifetime', 'Lifetime (s)', particleDefaults.lifetime],
+   ['direction', 'Direction (degrees)', particleDefaults.direction], ['spread', 'Spread (degrees)', particleDefaults.spread],
+   ['speed', 'Speed (px/s)', particleDefaults.speed], ['variation', 'Speed variation', particleDefaults.variation],
+   ['gravity', 'Vertical gravity', particleDefaults.gravity], ['spin', 'Spin (degrees/s)', particleDefaults.spin],
+   ['startSize', 'Start size (px)', particleDefaults.startSize], ['endSize', 'End size (px)', particleDefaults.endSize],
+   ['opacity', 'Opacity (0–1)', particleDefaults.opacity], ['fade', 'Fade out', particleDefaults.fade], ['additive', 'Additive blend', particleDefaults.additive],
+   ['startColor', 'Start color', particleDefaults.startColor], ['endColor', 'End color', particleDefaults.endColor],
+  ],
+  afterAnimation: true,
+  step(object, settings, { emitContinuously }) { emitContinuously(object, settings); },
  },
 });
 

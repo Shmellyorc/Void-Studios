@@ -65,6 +65,35 @@ can read as `Settings.name`. You can attach the same custom sheet to multiple ob
 types. Built-ins are implemented in `behaviors.js`, and the editor converts older
 projects' behavior checkboxes when opening their JSON.
 
+## Camera and HUD
+
+Open **Camera Settings** in the layout inspector to set the game viewport, zoom,
+follow target, and how quickly the camera catches up. The dashed guide shows the
+starting view. Visual events can follow a picked instance, set the camera center
+or zoom, and shake the camera. Mark an object type **Screen space (HUD)** to keep
+it fixed to the viewport. `Mouse.x` and `Mouse.y` give world coordinates, while
+`Mouse.screenX` and `Mouse.screenY` give viewport coordinates.
+
+## Animated particles
+
+Attach **Particle Emitter** to an object. Configure its emission rate, lifetime,
+direction, spread, size, spin, gravity, fading, and blend mode. Set the rate to
+zero for an emitter driven by the **Emit particle burst** event action.
+
+For sprite particles, import a sheet in **Animator** and make a clip on any
+sprite type in the project. Pick that type and clip in the emitter, or reuse the
+emitter's own sprite. Each particle starts its clip at birth and has its own
+animation speed and lifetime. The entire effect is bundled in the offline export.
+
+## Tilemap pathfinding
+
+Attach **Tilemap Pathfinding** and use **Navigate to point** with world
+coordinates such as `Mouse.x` and `Mouse.y`. The object follows an A* route to the
+center of the destination cell. Routes respect collision-enabled solid tiles
+and objects with **Solid** on both orthogonal and isometric maps. **On
+destination reached** and **On navigation failed** fire once per attempt. Use
+**Stop navigation** to cancel an active route.
+
 ## Package a desktop app
 
 Run these commands on Windows, macOS, or Linux to build for that host.
