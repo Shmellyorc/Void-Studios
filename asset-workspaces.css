@@ -35,6 +35,22 @@
 #prefab-preview { display: block; width: 100%; height: auto; margin: 8px 0; background: #111c29; }
 #extension-manifest { display: block; width: 100%; min-height: 240px; margin-top: 5px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--text); font: 13px monospace; tab-size: 2; resize: vertical; }
 
+#audio-clips { flex: 1; overflow: auto; padding: 12px; }
+.audio-clip-head, .audio-clip-row {
+ display: grid; grid-template-columns: minmax(110px,1fr) minmax(84px,130px) 75px; gap: 10px; align-items: center;
+ text-align: left; padding: 9px 12px;
+}
+.audio-clip-head { color: var(--sub); font-size: 12px; }
+.audio-clip-row { width: 100%; margin-bottom: 3px; }
+.audio-clip-row.selected { background: #2d485d; border-color: #6387a1; }
+.audio-clip-row > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-clip-row > :nth-child(n+2) { color: #c5d3e0; font-size: 12px; }
+.audio-mixer label > span { display: flex; align-items: center; gap: 7px; }
+.audio-mixer output { min-width: 3.5ch; text-align: right; }
+.audio-mixer input { padding-left: 0; padding-right: 0; accent-color: var(--accent); }
+#audio-status:empty { display: none; }
+#audio-status.audio-error { color: #ffc0c8; }
+
 #export-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
 .export-icon-row { display: flex; gap: 10px; align-items: end; margin-bottom: 8px; }
 .export-icon-row label { flex: 1; min-width: 0; margin: 0; }

@@ -1,6 +1,6 @@
 const workspaceTabs = [
  ['layout','Layout','layouttab'], ['events','Event Sheet','eventtab'], ['tiles','Tilemap','tiletab'],
- ['animate','Animator','animtab'], ['ui','UI','uitab'],
+ ['animate','Animator','animtab'], ['ui','UI','uitab'], ['audio','Audio','audiotab'],
 ];
 const studioWorkspaceCommands = {
  layout: [
@@ -27,6 +27,7 @@ const studioWorkspaceCommands = {
    null,['Shared Styles…','ui:styles'],['Load Menu Demo…','ui:demo']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
+ audio: [['Audio',[['Import Audio…','audio:import'],['Audition / Stop','audio:audition'],null,['Load Audio Demo…','audio:demo']]]],
 };
 const studioMenuAvailability = {
  place: () => Boolean(T(I()?.type || activeType)),
@@ -50,6 +51,8 @@ const studioMenuAvailability = {
  'ui:add:slider': () => Boolean(currentUIScreen()),
  'ui:add:toggle': () => Boolean(currentUIScreen()),
  'ui:add:dropdown': () => Boolean(currentUIScreen()),
+ 'audio:import': () => !audioWorkspace.importing,
+ 'audio:audition': () => Boolean(selectedAudioClip()),
  'zoom:in': () => canZoomWorkspace(1),
  'zoom:out': () => canZoomWorkspace(-1),
  'zoom:reset': () => canZoomWorkspace(0),

@@ -632,26 +632,45 @@ function menuDemo() {
  const buttonAt = (text,y,command,target,order) => uiControlPreset('button',text,{ y,command,target,order,w:224 });
  const label = (text,y,size,w=440) => uiControlPreset('label',text,{ y,size,w });
  const optionStyle = uiStyleDefaults('Options controls');
- const panel = uiControlPreset('panel','Options panel',{w:400,h:252,padding:16,gap:8});
- const option = (kind,text,props) => uiControlPreset(kind,text,{ parent:panel.id,h:36,style:optionStyle.id,...props });
- const volume = option('slider','Volume',{variable:'Volume',order:0});
- const fullscreen = option('toggle','Fullscreen',{variable:'Fullscreen',order:1});
- const tone = option('dropdown','Test tone',{variable:'Tone',options:['Low','High'],order:2});
+ const panel = uiControlPreset('panel','Options panel',{w:400,h:324,padding:12,gap:6});
+ const option = (kind,text,props) => uiControlPreset(kind,text,{ parent:panel.id,h:31,style:optionStyle.id,...props });
+ const mixer = [['master','Volume','Master volume',75],['music','MusicVolume','Music volume',80],
+  ['sfx','EffectsVolume','Effects volume',100],['ui','UIVolume','UI volume',100]];
+ const sliders = mixer.map(([,variable,label],order) => option('slider',label,{variable,order}));
+ const fullscreen = option('toggle','Fullscreen',{variable:'Fullscreen',order:4});
+ const tone = option('dropdown','Test tone',{variable:'Tone',options:['Low','High'],order:5});
+ const playButton = buttonAt('Play',12,'event','arena',0);
+ const controlsButton = buttonAt('Controls',66,'show','controls-menu',1);
+ const optionsButton = buttonAt('Options',120,'show','options-menu',2);
+ const audio = (clip,args = {}) => block('playAudio',{clip,bus:'',volume:'100',loop:'false',...args});
+ const menuSound = () => audio('menu-confirm');
+ const track = 'music';
  project.uiStyles = [optionStyle];
- project.globals.push({name:'Volume',value:75},{name:'Fullscreen',value:false},{name:'Tone',value:'Low'});
+ project.audioClips = demoAudioClips();
+ project.audioMixer = Object.fromEntries(mixer.map(([bus,,,value]) => [bus,value]));
+ project.globals.push(...mixer.map(([,name,,value]) => ({name,value})),{name:'Fullscreen',value:false},{name:'Tone',value:'Low'});
  title.events.push(
-  event([block('start')],[block('audioVolume',{value:'Volume'})]),
-  event([block('uiChanged',{control:volume.id})],[block('audioVolume',{value:'Volume'})]),
+  event([block('start')],[block('stopAudio',{tag:track})]),
+  ...mixer.map(([bus,value],index) => event([block('uiChanged',{control:sliders[index].id})],
+   [block('audioBusVolume',{bus,value,duration:'0'})])),
   event([block('uiChanged',{control:fullscreen.id})],[block('fullscreen',{name:'Fullscreen'})]),
-  event([block('uiChanged',{control:tone.id})],[block('sound',{frequency:'300 + 420 * (Tone == "High")',duration:'0.15'})])
+  event([block('uiChanged',{control:tone.id})],[block('sound',{frequency:'300 + 420 * (Tone == "High")',duration:'0.15'})]),
+  event([block('uiActivated',{control:playButton.id})],[menuSound(),block('layout',{layout:'arena'})]),
+  ...[controlsButton,optionsButton].map(button => event([block('uiActivated',{control:button.id})],[menuSound()]))
+ );
+ for (const row of arena.events) if (row.actions.some(action => action.kind === 'addGlobal' && action.args.name === 'Score')) {
+  row.actions = row.actions.map(action => action.kind === 'sound' ? audio('shard-pickup') : action);
+ }
+ arena.events.push(
+  event([block('start')],[audio('arena-loop',{loop:'true',tag:track})]),
+  event([block('uiOpened',{screen:'pause-menu'})],[menuSound(),block('fadeAudio',{tag:track,value:'25',duration:'0.35'})]),
+  event([block('uiOpened',{screen:'game-hud'})],[block('fadeAudio',{tag:track,value:'100',duration:'0.45'})]),
  );
  project.uiScreens = [
   { id:'title-menu',name:'Main Menu',items:[
    label('Shard Runner',-100,42),
    label('Collect the shards and reach the gate.',-54,17),
-   buttonAt('Play',12,'layout','arena',0),
-   buttonAt('Controls',66,'show','controls-menu',1),
-   buttonAt('Options',120,'show','options-menu',2),
+   playButton,controlsButton,optionsButton,
   ] },
   { id:'controls-menu',name:'Controls',items:[
    label('Controls',-100,38),
@@ -660,8 +679,8 @@ function menuDemo() {
    buttonAt('Back',62,'show','title-menu',0),
   ] },
   { id:'options-menu',name:'Options',items:[panel,
-   option('label','Options',{h:40,style:'',size:30}),volume,fullscreen,tone,
-   option('button','Back',{order:3,command:'restore'}),
+   option('label','Options',{h:36,style:'',size:28}),...sliders,fullscreen,tone,
+   option('button','Back',{order:6,command:'restore'}),
   ] },
   { id:'game-hud',name:'Gameplay HUD',navigation:false,items:[
    uiControlPreset('label','SHARDS {Score} / 6',{ anchor:'top-left',x:16,y:10,w:145,h:40,size:18 }),
@@ -690,6 +709,7 @@ function menuDemo() {
  for (const [layoutId,screenId] of [['win','victory-menu'],['lose','retry-menu']]) {
   const layout = project.layouts.find(item => item.id === layoutId);
   layout.instances = [];
+  layout.events.unshift(event([block('start')],[block('stopAudio',{tag:track})]));
   layout.uiScreen = screenId;
   project.uiScreens.push({ id:screenId,name:layout.name,items:[
    label(layoutId === 'win' ? 'All shards recovered' : 'The shards are lost',-70,34),

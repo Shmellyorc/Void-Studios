@@ -17,8 +17,8 @@ locally. Auto mode tries WebGL and falls back to Canvas 2D if WebGL is unavailab
 Select **Canvas 2D** to check the fallback, or **WebGPU first** to try WebGPU.
 The layout editing canvas uses Canvas 2D.
 
-The `.void` format stores sprite and tileset images as binary data and stores
-identical embedded images once. A saved project is self-contained. **Open**
+The `.void` format stores sprite images, tilesets, and audio as binary data and
+stores identical embedded media once. A saved project is self-contained. **Open**
 also reads older `.void.json` projects. Save one again to convert it to `.void`.
 
 ## Tilemaps and project enums
@@ -235,6 +235,25 @@ The menu bar below the header shows commands for the active workspace. Layout
 has camera and object menus, Tilemap has map and layer menus, and Animator has
 sprite sheet and clip menus. The mouse wheel zooms over the Layout, Tilemap,
 Animator, or UI canvas. The **View** menu also offers zoom commands.
+
+## Audio
+
+Open **Audio** and choose **Import Audio** to add clips such as WAV, MP3, or
+Ogg. Select a clip to audition it or set its default mixer channel. Change
+**Master**, **Music**, **Sound Effects**, or **UI** in the mixer to set the
+project defaults. The clips travel with the saved project and offline exports.
+
+Use **Play audio** in an event sheet to choose a clip, channel, volume, and
+whether it loops. Untagged sounds can overlap. A named tag replaces any
+previous playback with the same tag. **Stop audio** and **Fade audio** target
+that tag. Leaving it empty targets all clips. **Set channel volume** changes
+the mixer from events, and **On screen shown** can trigger an audio transition
+when a pause menu opens or a HUD returns.
+
+**Load Audio Demo** opens Shard Runner with original music and sounds. The
+Options screen has a slider for each channel. Pause fades the music down and
+Resume restores its level. Click or press a key in the game when the browser
+requires an interaction to start audio.
 
 ## Export a game
 
