@@ -142,11 +142,16 @@ function renderDebugSheet(snapshot) {
  if (contents.dataset.rendered !== key) {
   const conditions = editorDebug.conditions[source.kind==='behavior'?'behavior':'layout'];
   const actions = editorDebug.actions;
-  const walk = (events, level = 0) => events.map(event => {
-   if (event.group || event.include) {
-    const name=event.group??('Include · '+(editorDebug.project.eventSheets?.find(sheet=>sheet.id===event.include)?.name??'Unavailable sheet'));
-    return `<div class="debug-event" style="--event-indent:${Math.min(5,level)}"><strong>${esc(name)}</strong></div>`+
-     walk(event.children??[],level+1);
+  const walk = (events, level = 0, parentColor) => events.map(event => {
+   if (event.group) {
+    const accent=eventGroupColor(event.id,parentColor);
+    return `<div class="debug-event debug-event-group" style="--event-indent:${Math.min(5,level)};--group-accent:${accent}">
+     <strong>${esc(event.group)}</strong></div>`+
+     eventGroupGuide(walk(event.children??[],level+1,accent),accent,level*13+1,level<5);
+   }
+   if (event.include) {
+    const name=editorDebug.project.eventSheets?.find(sheet=>sheet.id===event.include)?.name??'Unavailable sheet';
+    return `<div class="debug-event" style="--event-indent:${Math.min(5,level)}"><strong>Include · ${esc(name)}</strong></div>`;
    }
    const active = visiblePoint?.id === event.id;
    const reached = visiblePoint?.parents.some(parent => sourceKey(parent.source) === sourceKey(source) && parent.id === event.id);
@@ -164,7 +169,7 @@ function renderDebugSheet(snapshot) {
     }).join('')}
     ${event.actions.map((block,index) => `<div class="debug-rule debug-action ${actionIndex === index ? 'debug-next' : ''}">
      ${actionIndex === index ? '<span class="next-marker" aria-label="Next action">▶</span>' : ''}${formatBlock(block,actions)}</div>`).join('')}
-   </div>${walk(event.children || [],level+1)}`;
+   </div>${walk(event.children || [],level+1,parentColor)}`;
   }).join('');
   contents.innerHTML = walk(source.events) || '<p class="muted">This sheet has no events.</p>';
   contents.dataset.rendered = key;

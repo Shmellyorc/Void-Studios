@@ -193,8 +193,9 @@ position in the event list. Each included sheet runs once per pass, and the
 editor prevents circular includes.
 
 Organize rows in nested, collapsible groups. Drag a row by its grip to move it,
-or use **Move to group**. Comments can describe a whole event or an individual
-condition or action. Disabling a group skips its events, and **System → Set
+or use **Move to group**. Colored headers and guides show where each group
+starts and ends in the editor and live inspector. Comments can describe a
+whole event or an individual condition or action. Disabling a group skips its events, and **System → Set
 group active** can change that at runtime. **Else** runs when the preceding
 branch did not match. **Trigger once while true** fires once for the same
 picked selection until the other conditions fall false.

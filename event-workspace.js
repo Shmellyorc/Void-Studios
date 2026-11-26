@@ -1,5 +1,18 @@
 const eventWorkspace={focus:'',collapsed:new Set(),dragged:null,picker:null};
 const sheetKey=source=>source.kind+':'+source.id;
+const eventGroupPalette=['#77d8ac','#83baff','#c5a5fa','#efba78','#f29eb2','#78d4de','#d0da83','#f0a68b'];
+
+function eventGroupColor(id,parent) {
+ let hash=2166136261;
+ for (const character of id) hash=Math.imul(hash^character.charCodeAt(0),16777619);
+ const slot=(hash>>>0)%eventGroupPalette.length;
+ const color=eventGroupPalette[slot];
+ return color===parent?eventGroupPalette[(slot+1)%eventGroupPalette.length]:color;
+}
+
+function eventGroupGuide(children,accent,offset,visible) {
+ return children?`<div class="event-scope" style="--group-accent:${accent};--event-guide-x:${offset}px" ${visible?'data-guide':''}>${children}</div>`:'';
+}
 
 function editorEventSheet() {
  const sources=eventSheetSources(P);
@@ -110,21 +123,23 @@ function renderEventRows() {
     </div>`;
   }).join('')+`<button class="addblock" data-act="addblock:${which}:${row.id}">+ Add ${which==='C'?'condition':'action'}</button>`;
  }
- function rows(list,depth=0) {
+ function rows(list,depth=0,parentColor) {
   return list.map(row=>{
    const collapsed=eventWorkspace.collapsed.has(row.id);
    const grip=`<span class="event-grip" draggable="true" data-drag-event="${row.id}" title="Drag to reorder">⠿</span>`;
    const tail=`<span class="event-spacer"></span>${button('↑','up:'+row.id)}${button('↓','down:'+row.id)}
      ${button(row.disabled?'Enable':'Disable','toggle:'+row.id)}${button('×','delevent:'+row.id,'danger')}`;
    if (row.group) {
-    const children=rows(row.children,depth+1);
-    return `<div class="event-entry event-group ${row.disabled?'event-group-disabled':''}" data-event-entry="${row.id}" data-event-group style="--depth:${Math.min(6,depth)}">
+    const accent=eventGroupColor(row.id,parentColor);
+    const children=rows(row.children,depth+1,accent);
+    return `<div class="event-entry event-group ${row.disabled?'event-group-disabled':''}" data-event-entry="${row.id}" data-event-group
+      style="--depth:${Math.min(6,depth)};--group-accent:${accent}">
      <div class="event-group-heading">${grip}
       <button type="button" data-act="evt:collapse:${row.id}" aria-expanded="${!collapsed}">${collapsed?'▸':'▾'} ${esc(row.group)}</button>
       ${button('Rename','evt:editGroup:'+row.id)}${button('+ Event','evt:addIn:'+row.id)}${button('+ Group','evt:group:'+row.id)}
       ${button('Comment','evt:comment:'+row.id)}${button('Move','evt:move:'+row.id)}${tail}</div>
      ${row.comment?'<p class="event-annotation">'+esc(row.comment)+'</p>':''}
-    </div>${collapsed?'':children}`;
+    </div>${collapsed?'':eventGroupGuide(children,accent,depth*18+1,depth<6)}`;
    }
    if (row.include) {
     const target=(P.eventSheets??[]).find(sheet=>sheet.id===row.include);
@@ -133,7 +148,7 @@ function renderEventRows() {
       ${button('Move','evt:move:'+row.id)}${tail}</div>
     </div>`;
    }
-   const count=++number, children=rows(row.children??[],depth+1);
+   const count=++number, children=rows(row.children??[],depth+1,parentColor);
    return `<div class="event event-entry ${row.disabled?'disabled':''}" data-event-entry="${row.id}" style="--depth:${Math.min(6,depth)}">
     ${row.comment?'<p class="event-annotation event-note">'+esc(row.comment)+'</p>':''}
     <div class="eventbar">${grip}${editorBreakpointButton(row)}<span class="eventno">${count}</span>

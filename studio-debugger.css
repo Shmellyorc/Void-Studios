@@ -16,6 +16,7 @@
 .debug-run-state{font-size:12px;color:#c8e1f4;padding:7px 12px;background:#1c2834;border-bottom:1px solid var(--line)}
 .debug-sheet-rows{padding:7px 9px;max-height:34vh;overflow:auto;scroll-padding:6px}
 .debug-event{margin:0 0 7px calc(var(--event-indent) * 13px);border:1px solid var(--line);background:#222b36;border-radius:5px;overflow:hidden}
+.debug-event-group{border-left:3px solid var(--group-accent);color:var(--group-accent);padding:4px 6px;background:color-mix(in srgb,var(--group-accent) 14%,#222b36)}
 .debug-event-active{border-color:#72cbb1}.debug-event-parent{border-left-color:#72cbb1}.debug-event-disabled{opacity:.55}
 .debug-event-title{display:flex;align-items:center;gap:4px;background:#293646;padding:4px 6px;font-size:12px}
 .debug-rule{padding:4px 8px;display:flex;align-items:baseline;gap:6px;font-size:11px;overflow-wrap:anywhere}

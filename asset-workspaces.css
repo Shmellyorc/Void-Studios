@@ -127,7 +127,17 @@
 .event-group,.event-include { margin-bottom:8px; border:1px solid #415565; border-radius:5px; background:#232f3b; }
 .event-group-heading { display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding:4px 7px; }
 .event-group-heading > button { font-size:11px; padding:4px 6px; }
-.event-group-heading > button[aria-expanded] { border-color:transparent; background:transparent; font-weight:700; color:#a6e6cf; }
+.event-group {
+ border-left:3px solid var(--group-accent);
+ background:color-mix(in srgb,var(--group-accent) 14%,#232f3b);
+}
+.event-group-heading > button[aria-expanded] { border-color:transparent; background:transparent; font-weight:700; color:var(--group-accent,#a6e6cf); }
+.event-scope { display:flow-root; position:relative; }
+.event-scope[data-guide]::before {
+ content:''; position:absolute; left:var(--event-guide-x); top:-8px; bottom:4px; width:2px;
+ background:var(--group-accent); opacity:.65; pointer-events:none;
+}
+.event-scope .eventbar { background:color-mix(in srgb,var(--group-accent) 10%,#303c49); }
 .event-group-disabled,.event-include.disabled { opacity:.55; }
 .event-grip { cursor:grab; color:#a6baca; padding:3px 1px; user-select:none; }
 .event-grip:active { cursor:grabbing; }
