@@ -1,4 +1,5 @@
 const audioWorkspace = { project:null,clip:null,preview:null,importing:false,status:'',error:false };
+const studioWavRate = 22050;
 const audioClipOptions = (project = P) => (project.audioClips ?? []).map(({id,name}) => [id,name]);
 const selectedAudioClip = () => P.audioClips?.find(clip => clip.id === audioWorkspace.clip);
 const audioFileTypes = {
@@ -23,17 +24,19 @@ function renderAudioWorkspace() {
  if (!selectedAudioClip()) audioWorkspace.clip = clips[0]?.id;
  const clip = selectedAudioClip();
  $('#audio-tools').innerHTML = button('Import Audio…','audio:import','primary') +
+  button('Sound Effects…','audio:soundEffect') +
   (clip ? button(audioWorkspace.preview ? 'Stop Audition' : 'Audition','audio:audition') : '') +
   '<div class="spacer"></div>' + button('Load Audio Demo…','audio:demo');
  $('#audio-tools [data-act="audio:import"]').disabled = audioWorkspace.importing;
  const list = clips.map(item => `<button class="audio-clip-row ${item === clip ? 'selected' : ''}" data-act="audio:select:${item.id}">
   <span>${esc(item.name)}</span><span>${esc(audioBuses[item.bus])}</span><span>${item.duration.toFixed(1)} s</span></button>`).join('');
  $('#audio-clips').innerHTML = list ? '<div class="audio-clip-head"><span>Name</span><span>Channel</span><span>Duration</span></div>' + list :
-  '<div class="empty">Import an audio clip to start the library.</div>';
+  '<div class="empty">Import audio or create a sound effect to start the library.</div>';
  const inspector = $('#audio-inspector');
  inspector.innerHTML = (clip ? '<div class="panelhead">CLIP</div><div class="prop-group">' +
   field('Name','audio-clip-name',clip.name) +
   select('Default channel','audio-clip-bus',clip.bus,Object.entries(audioBuses)) +
+  (clip.soundEffect ? button('Edit Sound Effect…','audio:editEffect') : '') +
   button('Remove Clip','audio:remove','danger ghost') + '</div>' : '') +
   '<div class="panelhead">MIXER</div><div class="prop-group audio-mixer">' + Object.entries(audioBuses).map(([id,name]) => {
    const amount = P.audioMixer?.[id] ?? 100;
@@ -104,6 +107,8 @@ async function importAudioFiles(files) {
 
 function studioAudioAction(action, id) {
  const clip = selectedAudioClip();
+ if (action === 'soundEffect') return editStudioSoundEffect();
+ if (action === 'editEffect' && clip?.soundEffect) return editStudioSoundEffect(clip);
  if (action === 'import') {
   if (!audioWorkspace.importing) $('#audio-file').click();
  } else if (action === 'demo') {
@@ -169,15 +174,15 @@ function setupAudioWorkspace() {
  });
 }
 
-function demoWav(id,name,bus,duration,sample) {
- const rate = 22050, frames = Math.round(rate*duration);
+function encodeStudioWav(id,name,bus,duration,sample) {
+ const rate = studioWavRate, frames = Math.round(rate*duration);
  const bytes = new Uint8Array(44+frames*2), view = new DataView(bytes.buffer);
  const ascii = (at,value) => bytes.set([...value].map(char => char.charCodeAt(0)),at);
  ascii(0,'RIFF'); view.setUint32(4,bytes.length-8,true); ascii(8,'WAVEfmt ');
  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
  view.setUint32(24,rate,true); view.setUint32(28,rate*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
  ascii(36,'data'); view.setUint32(40,frames*2,true);
- for (let i=0;i<frames;i++) view.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,sample(i/rate)))*32767),true);
+ for (let i=0;i<frames;i++) view.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,sample(i/rate,i)))*32767),true);
  return { id,name,bus,duration:frames/rate,source:'data:audio/wav;base64,' + projectMediaBase64(bytes) };
 }
 
@@ -187,12 +192,12 @@ function demoAudioClips() {
  const bass = [48,48,45,45,41,41,43,43].map(note);
  const melody = [72,76,79,76,69,72,76,72,65,69,72,69,67,71,74,79].map(note);
  return [
-  demoWav('menu-confirm','Menu Confirm','ui',.14,t => .42*wave(t < .06 ? 480 : 720,t)*Math.sin(Math.PI*t/.14)),
-  demoWav('shard-pickup','Shard Pickup','sfx',.24,t => {
+  encodeStudioWav('menu-confirm','Menu Confirm','ui',.14,t => .42*wave(t < .06 ? 480 : 720,t)*Math.sin(Math.PI*t/.14)),
+  encodeStudioWav('shard-pickup','Shard Pickup','sfx',.24,t => {
    const step = Math.min(2,Math.floor(t/.08)), time = t-step*.08, frequency = [740,990,1320][step];
    return (.4*wave(frequency,time)+.13*wave(frequency*2,time))*Math.sin(Math.PI*time/.08);
   }),
-  demoWav('arena-loop','Starlit Circuit','music',8,t => {
+  encodeStudioWav('arena-loop','Starlit Circuit','music',8,t => {
    const beat = Math.floor(t), time = t-beat, half = Math.floor(t*2), phase = t-half/2;
    const low = .16*(wave(bass[beat],time)+.24*wave(bass[beat]*2,time))*Math.sin(Math.PI*time);
    const lead = .13*(wave(melody[half],phase)+.23*wave(melody[half]*2,phase))*Math.sin(2*Math.PI*phase);

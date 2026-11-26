@@ -61,6 +61,17 @@
 .audio-mixer input { padding-left: 0; padding-right: 0; accent-color: var(--accent); }
 #audio-status:empty { display: none; }
 #audio-status.audio-error { color: #ffc0c8; }
+#dialog:has(#sound-effect-editor) { width:min(640px,calc(100% - 36px)); }
+#sfx-waveform { display:block; width:100%; height:110px; background:#131d27; border:1px solid var(--line); border-radius:5px; }
+.sfx-audition-tools { display:flex; align-items:center; gap:7px; margin:8px 0 12px; }
+#sfx-duration { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--sub); }
+#sfx-status { color:var(--sub); font-size:11px; }
+#sfx-status:empty { display:none; }
+.sfx-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px 12px; }
+.sfx-controls label { margin:0; padding:5px 0; }
+.sfx-controls label span { display:flex; justify-content:space-between; }
+.sfx-controls output { color:var(--text); font-variant-numeric:tabular-nums; }
+.sfx-controls input { margin:4px 0 0; padding:0; accent-color:var(--accent); }
 
 #sprite-board { justify-content: safe center; align-items: safe center; }
 #sprite-board[hidden], #sprite-frames:empty, #sprite-status:empty { display: none; }

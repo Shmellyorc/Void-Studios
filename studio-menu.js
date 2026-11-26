@@ -30,7 +30,8 @@ const studioWorkspaceCommands = {
    null,['Shared Styles…','ui:styles'],['Load Menu Demo…','ui:demo']]],
   ['Input',[['Input Actions…','ui:inputs']]],
  ],
- audio: [['Audio',[['Import Audio…','audio:import'],['Audition / Stop','audio:audition'],null,['Load Audio Demo…','audio:demo']]]],
+ audio: [['Audio',[['Import Audio…','audio:import'],['Sound Effects…','audio:soundEffect'],['Edit Sound Effect…','audio:editEffect'],
+  ['Audition / Stop','audio:audition'],null,['Load Audio Demo…','audio:demo']]]],
  data: [['Data',[['New Data File…','data:newFile'],['Import…','data:import'],['Export…','data:export'],null,
   ['Tables','data:tables'],['Enums','data:enums'],['Load Bestiary Demo…','data:demo']]]],
  sprite: [
@@ -72,6 +73,7 @@ const studioMenuAvailability = {
  'ui:add:dropdown': () => Boolean(currentUIScreen()),
  'audio:import': () => !audioWorkspace.importing,
  'audio:audition': () => Boolean(selectedAudioClip()),
+ 'audio:editEffect': () => Boolean(selectedAudioClip()?.soundEffect),
  'sprite:editObject': () => animatorType()?.kind === 'sprite',
  'sprite:importLayer': () => Boolean(currentSprite()),
  'sprite:gridDialog': () => Boolean(currentSprite()),

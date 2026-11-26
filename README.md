@@ -344,6 +344,11 @@ Ogg. Select a clip to audition it or set its default mixer channel. Change
 **Master**, **Music**, **Sound Effects**, or **UI** in the mixer to set the
 project defaults. The clips travel with the saved project and offline exports.
 
+Open **Sound Effects** in Audio to generate a Coin, Jump, Hit, Laser, Explosion,
+or Confirm sound. Use **Reroll** for a new variation, tweak its waveform,
+pitch, and envelope, then audition and save it. Select a generated clip and
+choose **Edit Sound Effect** to reopen its settings.
+
 Use **Play audio** in an event sheet to choose a clip, channel, volume, and
 whether it loops. Untagged sounds can overlap. A named tag replaces any
 previous playback with the same tag. **Stop audio** and **Fade audio** target
