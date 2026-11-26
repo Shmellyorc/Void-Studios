@@ -332,7 +332,8 @@ images. Select an imported font in a text object, UI control, or shared UI
 style. Saved projects and exports embed their fonts for offline use.
 
 For a flood-fill font, import its image and select a character mapping preset
-or enter the exact character order. The loader scans the image from top to
+or enter the exact character order. The preview pairs each detected glyph with
+its mapped character before import. The loader scans the image from top to
 bottom and left to right, using four-neighbor connectivity to identify each
 glyph. Pixel `(0,0)` supplies the ignore color. A glyph can be one pixel wide.
 

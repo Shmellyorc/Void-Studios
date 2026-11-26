@@ -138,9 +138,8 @@ async function readStudioBMFont(files) {
 }
 
 // Uses the same RGBA key, scan order and four-neighbor traversal as Void.Engine SpriteFont.
-function extractStudioFloodFont(image,mapping,spacing,lineSpacing) {
- const keys=[...mapping], {naturalWidth:width,naturalHeight:height}=image;
- if (!keys.length || new Set(keys).size!==keys.length) throw Error('Enter one unique character per glyph');
+function scanStudioFloodFont(image) {
+ const {naturalWidth:width,naturalHeight:height}=image;
  if (!width || !height || width>4096 || height>4096) throw Error('Choose an image up to 4096 × 4096');
  const canvas=document.createElement('canvas');
  canvas.width=width; canvas.height=height;
@@ -148,6 +147,7 @@ function extractStudioFloodFont(image,mapping,spacing,lineSpacing) {
  ctx.drawImage(image,0,0);
  const pixels=ctx.getImageData(0,0,width,height), rgba=new Uint32Array(pixels.data.buffer);
  const background=rgba[0], remaining=new Uint8Array(rgba.length), glyphs=[], stack=[];
+ let glyphHeight=0;
  for (let i=0;i<rgba.length;i++) {
   if (rgba[i]===background) rgba[i]=0;
   else remaining[i]=1;
@@ -166,13 +166,31 @@ function extractStudioFloodFont(image,mapping,spacing,lineSpacing) {
    if (y+1<height) visit(point+width);
   }
   const w=right-left+1, h=bottom-top+1;
-  glyphs.push({x:left,y:top,w,h,dx:0,dy:0,advance:w+spacing,page:0});
+  glyphs.push({x:left,y:top,w,h});
+  glyphHeight=Math.max(glyphHeight,h);
  }
- if (keys[0]===' ' && keys.length===glyphs.length+1) keys.shift();
- if (!glyphs.length || glyphs.length!==keys.length) throw Error('Found '+glyphs.length+' glyphs for '+keys.length+' characters. Check the mapping and separate touching glyphs.');
- let glyphHeight=0;
- glyphs.forEach((glyph,index)=>{ glyph.code=keys[index].codePointAt(0); glyphHeight=Math.max(glyphHeight,glyph.h); });
- if (!keys.includes(' ')) glyphs.push({code:32,x:0,y:0,w:0,h:0,dx:0,dy:0,advance:Math.max(1,Math.round(glyphHeight/3))+spacing,page:0});
  ctx.putImageData(pixels,0,0);
+ return {canvas,glyphs,glyphHeight};
+}
+
+function studioFloodFontMapping(count,mapping) {
+ const keys=[...mapping];
+ const unique=keys.length===new Set(keys).size;
+ if (keys[0]===' ' && keys.length===count+1) keys.shift();
+ let error='';
+ if (!count) error='No glyphs detected.';
+ else if (!unique) error='Use a unique character for each glyph.';
+ else if (keys.length!==count) error='Found '+count+' glyphs for '+keys.length+' characters. Check the mapping and separate touching glyphs.';
+ return {keys,implicitSpace:!keys.includes(' '),error};
+}
+
+function createStudioFloodFont(scan,mapping,spacing,lineSpacing) {
+ const {canvas,glyphHeight}=scan, {width,height}=canvas;
+ const {keys,implicitSpace,error}=studioFloodFontMapping(scan.glyphs.length,mapping);
+ if (error) throw Error(error);
+ const glyphs=scan.glyphs.map((bounds,index)=>({
+  ...bounds,code:keys[index].codePointAt(0),dx:0,dy:0,advance:bounds.w+spacing,page:0,
+ }));
+ if (implicitSpace) glyphs.push({code:32,x:0,y:0,w:0,h:0,dx:0,dy:0,advance:Math.max(1,Math.round(glyphHeight/3))+spacing,page:0});
  return {glyphs,lineHeight:glyphHeight+lineSpacing,page:{id:'font-page-'+uid(),width,height,image:canvas.toDataURL('image/png')}};
 }

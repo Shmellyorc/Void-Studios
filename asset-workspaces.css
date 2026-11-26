@@ -80,7 +80,7 @@
 #sprite-stage.sprite-eyedropper { cursor: var(--sprite-eyedropper-cursor), crosshair; }
 #sprite-board canvas {
  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
- box-shadow: none; pointer-events: none;
+ image-rendering: pixelated; box-shadow: none; pointer-events: none;
 }
 #sprite-stage.sprite-pixel-grid::after {
  content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -222,6 +222,15 @@
 .font-sample { margin-top:12px; }
 #font-sample-preview { min-height:54px; overflow-wrap:anywhere; overflow:auto; padding:10px; background:var(--bg); border-radius:4px; font-size:24px; }
 #font-sample-preview canvas { display:block; max-width:100%; image-rendering:pixelated; }
+#dialog:has(.flood-font-preview) { width:min(680px,calc(100% - 36px)); }
+#flood-font-status { margin:8px 0; font-size:12px; color:var(--sub); }
+#flood-font-status.flood-font-error { color:#ffabaf; }
+#flood-font-glyphs { display:grid; grid-template-columns:repeat(auto-fill,minmax(55px,1fr)); gap:5px; max-height:230px; overflow:auto; }
+#flood-font-glyphs figure { margin:0; padding:3px; display:grid; justify-items:center; background:#131d27; border:1px solid var(--line); border-radius:4px; }
+#flood-font-glyphs canvas { width:36px; height:36px; image-rendering:pixelated; }
+#flood-font-glyphs figcaption { font:12px system-ui,sans-serif; }
+#flood-font-pages { display:flex; align-items:center; justify-content:space-between; margin-top:6px; color:var(--sub); }
+#flood-font-pages[hidden] { display:none; }
 .main:has(#eventview.sheet-focused:not([hidden])) { grid-template-columns: var(--project-width) minmax(0,1fr) 0; }
 .main:has(#eventview.sheet-focused:not([hidden])) > .inspector { visibility:hidden; }
 .event-entry { margin-left:calc(var(--depth)*18px); }

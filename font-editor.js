@@ -65,27 +65,86 @@ function chooseStudioFontFile(mode) {
 }
 
 function configureStudioFloodFont(project,file,image) {
+ const scan=scanStudioFloodFont(image);
  if ($('#dialog').open) $('#dialog').close();
  const presets=Object.entries(fontCharsets).map(([id,[label]])=>[id,label]);
  simple('Import Flood-fill Font',field('Name','name',file.name.replace(/\.[^.]+$/,'')) +
   select('Mapping preset','preset','ascii',[...presets,['custom','Custom']]) +
   field('Character mapping','mapping',fontCharsets.ascii[1]) +
   '<p class="muted">Enter characters in glyph scan order, starting at the top left. A space in this field is a character.</p>' +
-  '<div class="two">'+field('Glyph spacing','spacing',1,'number')+field('Line spacing','lineSpacing',0,'number')+'</div>',values=>{
+  '<div class="two">'+field('Glyph spacing','spacing',1,'number')+field('Line spacing','lineSpacing',0,'number')+'</div>' +
+  `<section class="flood-font-preview" aria-label="Glyph mapping preview">
+   <p id="flood-font-status" role="status"></p><div id="flood-font-glyphs"></div>
+   <div id="flood-font-pages" hidden>
+    <button type="button" id="flood-font-previous">Previous</button>
+    <span id="flood-font-page"></span><button type="button" id="flood-font-next">Next</button>
+   </div>
+  </section>`,values=>{
    const name=values.name.trim().slice(0,100), spacing=Number(values.spacing), lineSpacing=Number(values.lineSpacing);
    if (!name || ![spacing,lineSpacing].every(value=>Number.isInteger(value) && value>=0 && value<=4096)) {
     throw Error('Enter a name and whole, nonnegative spacing values');
    }
-   const {glyphs,lineHeight,page}=extractStudioFloodFont(image,values.mapping,spacing,lineSpacing);
+   const {glyphs,lineHeight,page}=createStudioFloodFont(scan,values.mapping,spacing,lineSpacing);
    const font={id:'font-'+uid(),name,kind:'flood',glyphs,lineHeight,pages:[page.id]};
    if (saveStudioFont(project,font,[page])) setTimeout(()=>{ if (P===project) showStudioFonts(font.id); },0);
  });
  const preset=$('#dialogbody [data-field="preset"]'), mapping=$('#dialogbody [data-field="mapping"]');
+ const updatePreview=setupStudioFloodPreview(scan,mapping);
+ $('#dialogok').textContent='Import';
  preset.onchange=()=>{
   if (fontCharsets[preset.value]) mapping.value=fontCharsets[preset.value][1];
   else mapping.focus();
+  updatePreview();
  };
- mapping.oninput=()=>{ preset.value='custom'; };
+ mapping.oninput=()=>{ preset.value='custom'; updatePreview(); };
+}
+
+function setupStudioFloodPreview(scan,mapping) {
+ const grid=$('#flood-font-glyphs'), status=$('#flood-font-status'), count=scan.glyphs.length;
+ const previous=$('#flood-font-previous'), next=$('#flood-font-next');
+ const pageSize=96, pages=Math.max(1,Math.ceil(count/pageSize));
+ let page=0;
+ function update() {
+  const {keys,implicitSpace,error}=studioFloodFontMapping(count,mapping.value);
+  for (const caption of grid.querySelectorAll('figcaption')) {
+   const index=Number(caption.dataset.glyphIndex), key=keys[index];
+   caption.textContent=key===' ' ? 'Space' : key ?? 'Unmapped';
+   caption.classList.toggle('muted',key===undefined);
+   caption.parentElement.title='Glyph '+(index+1)+' · '+caption.textContent;
+  }
+  status.textContent=error || (count+' '+(count===1 ? 'glyph' : 'glyphs')+' mapped'+(implicitSpace ? ' · Space added automatically' : ''));
+  status.classList.toggle('flood-font-error',Boolean(error));
+  mapping.setAttribute('aria-invalid',String(Boolean(error)));
+  $('#dialogok').disabled=Boolean(error);
+ }
+ function renderPage() {
+  const start=page*pageSize;
+  grid.replaceChildren(...scan.glyphs.slice(start,start+pageSize).map(({x,y,w,h},index)=>{
+   const card=document.createElement('figure'), thumb=document.createElement('canvas'), caption=document.createElement('figcaption');
+   thumb.width=thumb.height=36;
+   thumb.setAttribute('aria-hidden','true');
+   const ctx=thumb.getContext('2d'), scale=Math.min(6,34/Math.max(w,h));
+   ctx.imageSmoothingEnabled=false;
+   const width=Math.max(1,Math.floor(w*scale)), height=Math.max(1,Math.floor(h*scale));
+   ctx.drawImage(scan.canvas,x,y,w,h,Math.floor((36-width)/2),Math.floor((36-height)/2),width,height);
+   ctx.globalCompositeOperation='source-in';
+   ctx.fillStyle='#e6eff5';
+   ctx.fillRect(0,0,36,36);
+   caption.dataset.glyphIndex=String(start+index);
+   card.append(thumb,caption);
+   return card;
+  }));
+  grid.scrollTop=0;
+  $('#flood-font-page').textContent=(page+1)+' / '+pages;
+  previous.disabled=page===0;
+  next.disabled=page===pages-1;
+  update();
+ }
+ $('#flood-font-pages').hidden=pages===1;
+ previous.onclick=()=>{ page--; renderPage(); };
+ next.onclick=()=>{ page++; renderPage(); };
+ renderPage();
+ return update;
 }
 
 async function studioFontFilesSelected(event) {
